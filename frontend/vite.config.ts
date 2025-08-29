@@ -41,6 +41,15 @@ export default defineConfig({
       '/api': {
         target: `http://localhost:${getBackendPort()}`,
         changeOrigin: true,
+        // Dynamically re-read backend port to survive restarts/port changes
+        router: () => `http://localhost:${getBackendPort()}`,
+        // During backend restarts, proxy will emit noisy ECONNREFUSED logs.
+        // Quiet them in dev to avoid terminal spam.
+        configure: (proxy) => {
+          proxy.on('error', () => {
+            // swallow proxy errors; the frontend has its own lightweight retry
+          });
+        },
       },
     },
   },
