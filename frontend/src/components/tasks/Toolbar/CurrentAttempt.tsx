@@ -132,6 +132,8 @@ function CurrentAttempt({
   const [merging, setMerging] = useState(false);
   const [pushing, setPushing] = useState(false);
   const [rebasing, setRebasing] = useState(false);
+  const [showMergeConfirmation, setShowMergeConfirmation] = useState(false);
+  const [showRebaseConfirmation, setShowRebaseConfirmation] = useState(false);
   const [showRebaseDialog, setShowRebaseDialog] = useState(false);
   const [selectedRebaseBranch, setSelectedRebaseBranch] = useState<string>('');
   const [showStopConfirmation, setShowStopConfirmation] = useState(false);
@@ -169,8 +171,8 @@ function CurrentAttempt({
   const handleMergeClick = async () => {
     if (!projectId || !selectedAttempt?.id || !selectedAttempt?.task_id) return;
 
-    // Directly perform merge without checking branch status
-    await performMerge();
+    // Ask for confirmation before performing merge
+    setShowMergeConfirmation(true);
   };
 
   const handlePushClick = async () => {
@@ -203,15 +205,8 @@ function CurrentAttempt({
   };
 
   const handleRebaseClick = async () => {
-    try {
-      setRebasing(true);
-      await rebaseMutation.mutateAsync(undefined);
-      setError(null); // Clear any previous errors on success
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to rebase branch');
-    } finally {
-      setRebasing(false);
-    }
+    // Ask for confirmation before performing an immediate rebase
+    setShowRebaseConfirmation(true);
   };
 
   const handleRebaseWithNewBranch = async (newBaseBranch: string) => {
@@ -727,6 +722,7 @@ function CurrentAttempt({
             <DialogTitle>Rebase Task Attempt</DialogTitle>
             <DialogDescription>
               Choose a new base branch to rebase this task attempt onto.
+              This operation rewrites history and cannot be undone from the UI.
             </DialogDescription>
           </DialogHeader>
 
@@ -756,6 +752,98 @@ function CurrentAttempt({
             <Button
               onClick={handleRebaseDialogConfirm}
               disabled={rebasing || !selectedRebaseBranch}
+            >
+              {rebasing ? 'Rebasing...' : 'Rebase'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Merge Confirmation Dialog */}
+      <Dialog
+        open={showMergeConfirmation}
+        onOpenChange={setShowMergeConfirmation}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Merge Changes?</DialogTitle>
+            <DialogDescription>
+              This will squash-merge the current attempt branch
+              {selectedBranchDisplayName ? ` (${selectedBranchDisplayName})` : ''}
+              {branchStatus?.base_branch_name ? ` into ${branchStatus.base_branch_name}` : ''}
+              in your local repository. It will not push to remote.
+              This action cannot be undone from the app.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setShowMergeConfirmation(false)}
+              disabled={merging}
+            >
+              Cancel
+            </Button>
+            <Button
+              className="bg-green-600 hover:bg-green-700"
+              onClick={async () => {
+                try {
+                  setShowMergeConfirmation(false);
+                  setMerging(true);
+                  await mergeMutation.mutateAsync();
+                  setError(null);
+                  setMergeSuccess(true);
+                  setTimeout(() => setMergeSuccess(false), 2000);
+                } catch (error: any) {
+                  setError(error?.message || 'Failed to merge changes');
+                } finally {
+                  setMerging(false);
+                }
+              }}
+              disabled={merging}
+            >
+              {merging ? 'Merging...' : 'Merge'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Rebase Confirmation Dialog */}
+      <Dialog
+        open={showRebaseConfirmation}
+        onOpenChange={setShowRebaseConfirmation}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Rebase Branch?</DialogTitle>
+            <DialogDescription>
+              This will rebase the attempt branch onto the configured base
+              branch
+              {branchStatus?.base_branch_name ? ` (${branchStatus.base_branch_name})` : ''}.
+              Rebasing rewrites history and cannot be undone from the app.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setShowRebaseConfirmation(false)}
+              disabled={rebasing}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={async () => {
+                try {
+                  setShowRebaseConfirmation(false);
+                  setRebasing(true);
+                  await rebaseMutation.mutateAsync(undefined);
+                  setError(null);
+                } catch (err: any) {
+                  setError(err?.message || 'Failed to rebase branch');
+                } finally {
+                  setRebasing(false);
+                }
+              }}
+              disabled={rebasing}
             >
               {rebasing ? 'Rebasing...' : 'Rebase'}
             </Button>
