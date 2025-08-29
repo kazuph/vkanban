@@ -18,6 +18,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { useCallback, useEffect, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { attemptsApi } from '@/lib/api.ts';
 import { ProvidePatDialog } from '@/components/ProvidePatDialog';
 import { GitHubLoginDialog } from '@/components/GitHubLoginDialog';
@@ -27,6 +28,7 @@ import { useProjectBranches } from '@/hooks';
 
 function CreatePrDialog() {
   const { isOpen, data, closeCreatePRDialog } = useCreatePRDialog();
+  const queryClient = useQueryClient();
   const [prTitle, setPrTitle] = useState('');
   const [prBody, setPrBody] = useState('');
   const [prBaseBranch, setPrBaseBranch] = useState('main');
@@ -62,6 +64,10 @@ function CreatePrDialog() {
     if (result.success) {
       setError(null); // Clear any previous errors on success
       window.open(result.data, '_blank');
+      // Proactively refresh branch status so UI flips to Open PR/Push immediately
+      if (data?.attempt.id) {
+        queryClient.invalidateQueries({ queryKey: ['branchStatus', data.attempt.id] });
+      }
       // Reset form and close dialog
       setPrTitle('');
       setPrBody('');
@@ -99,6 +105,7 @@ function CreatePrDialog() {
     prTitle,
     closeCreatePRDialog,
     setPatDialogError,
+    queryClient,
   ]);
 
   const handleCancelCreatePR = useCallback(() => {

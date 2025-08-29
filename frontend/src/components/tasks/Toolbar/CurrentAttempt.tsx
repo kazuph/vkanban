@@ -9,6 +9,7 @@ import {
   Settings,
   StopCircle,
   ScrollText,
+  Code2,
 } from 'lucide-react';
 import {
   Tooltip,
@@ -509,6 +510,26 @@ function CurrentAttempt({
       <div>
         <div className="grid grid-cols-2 gap-3 @md:flex @md:flex-wrap @md:items-center">
           <div className="flex gap-2 @md:flex-none">
+            {/* Open in IDE */}
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="xs"
+                    onClick={() => handleOpenInEditor()}
+                    disabled={!selectedAttempt}
+                    className="gap-1"
+                  >
+                    <Code2 className="h-3 w-3" />
+                    IDE
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Open worktree in IDE</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
             <Button
               variant={runningDevServer ? 'destructive' : 'outline'}
               size="xs"
