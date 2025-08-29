@@ -601,6 +601,17 @@ function CurrentAttempt({
                       ? 'Creating...'
                       : 'Create PR'}
                 </Button>
+                {mergeInfo.hasOpenPR && mergeInfo.openPR?.type === 'pr' && (
+                  <Button
+                    onClick={() => window.open(mergeInfo.openPR!.pr_info.url, '_blank')}
+                    variant="outline"
+                    size="xs"
+                    className="gap-1"
+                  >
+                    <ExternalLink className="h-3 w-3" />
+                    Open PR
+                  </Button>
+                )}
                 <Button
                   onClick={handleMergeClick}
                   disabled={
