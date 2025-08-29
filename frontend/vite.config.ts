@@ -2,6 +2,25 @@ import { sentryVitePlugin } from "@sentry/vite-plugin";
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import path from 'path'
+import fs from 'fs'
+
+function getBackendPort(): number {
+  // Prefer explicit env var
+  const envPort = process.env.BACKEND_PORT;
+  if (envPort && /^\d+$/.test(envPort.trim())) return parseInt(envPort.trim(), 10);
+  // Fallback: read from repo-level .dev-ports.json if present (used by npm run dev)
+  try {
+    const portsPath = path.resolve(__dirname, '..', '.dev-ports.json');
+    if (fs.existsSync(portsPath)) {
+      const data = JSON.parse(fs.readFileSync(portsPath, 'utf-8'));
+      if (typeof data.backend === 'number') return data.backend;
+      if (typeof data.backend === 'string' && /^\d+$/.test(data.backend)) return parseInt(data.backend, 10);
+    }
+  } catch (_) {
+    // ignore and fallback
+  }
+  return 3001;
+}
 
 export default defineConfig({
   plugins: [react(), sentryVitePlugin({
@@ -20,7 +39,7 @@ export default defineConfig({
     port: parseInt(process.env.FRONTEND_PORT || '3000'),
     proxy: {
       '/api': {
-        target: `http://localhost:${process.env.BACKEND_PORT || '3001'}`,
+        target: `http://localhost:${getBackendPort()}`,
         changeOrigin: true,
       },
     },
