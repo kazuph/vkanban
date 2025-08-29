@@ -58,9 +58,17 @@ export function AttemptHeaderCard({
       });
     }
   };
-  const openPRUrl = branchStatus?.merges?.find(
-    (m) => m.type === 'pr' && m.pr_info.status === 'open'
-  )?.pr_info.url;
+  // If a PR exists (open/merged/closed), prefer showing "Open PR" to view it.
+  // Prefer an open PR if available, otherwise fall back to the most recent PR.
+  const prMerges = (branchStatus?.merges || []).filter((m) => m.type === 'pr');
+  const preferredPR =
+    prMerges.find((m) => m.pr_info.status === 'open') ||
+    prMerges
+      .slice()
+      .sort((a, b) =>
+        new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      )[0];
+  const openPRUrl = preferredPR?.pr_info.url;
 
   return (
     <Card className="border-b border-dashed bg-background flex items-center text-sm">
