@@ -1173,7 +1173,10 @@ impl GitService {
         // Set up authentication callback using the GitHub token
         let mut callbacks = git2::RemoteCallbacks::new();
         callbacks.credentials(|_url, username_from_url, _allowed_types| {
-            git2::Cred::userpass_plaintext(username_from_url.unwrap_or("git"), github_token)
+            // Prefer a stable username for token-based HTTPS auth. For GitHub Apps/OAuth-style
+            // tokens, "x-access-token" is widely accepted; fall back to any non-empty string.
+            let user = username_from_url.unwrap_or("x-access-token");
+            git2::Cred::userpass_plaintext(user, github_token)
         });
 
         // Configure push options
@@ -1186,19 +1189,61 @@ impl GitService {
         // Clean up the temporary remote
         let _ = repo.remote_delete(temp_remote_name);
 
-        // Check push result
-        push_result.map_err(|e| match e.code() {
+        // Check push result; if it fails with an auth/transport error (common when using
+        // OAuth device tokens), fall back to invoking the git CLI with an Authorization header.
+        let mut used_cli_fallback = false;
+        if let Err(e) = push_result.map_err(|e| match e.code() {
             git2::ErrorCode::NotFastForward => {
                 GitServiceError::BranchesDiverged(format!(
                     "Push failed: branch '{branch_name}' has diverged and cannot be fast-forwarded. Either merge the changes or force push."
                 ))
             }
             _ => e.into(),
-        })?;
-        self.fetch_from_remote(&repo, github_token, &remote)?;
-        let mut branch = Self::find_branch(&repo, branch_name)?;
-        if !branch.get().is_remote() {
-            branch.set_upstream(Some(&format!("{remote_name}/{branch_name}")))?;
+        }) {
+            // Attempt CLI-based push using http.extraheader with Bearer token
+            // Derive host from the HTTPS URL for scoping
+            let https_url_clone = https_url.clone();
+            let (scheme, host) = (|| {
+                // crude parser sufficient for https://host/path.git
+                if let Some(rest) = https_url_clone.split_once("://") {
+                    let scheme = rest.0;
+                    let host = rest.1.split('/').next().unwrap_or("github.com");
+                    (scheme.to_string(), host.to_string())
+                } else {
+                    ("https".to_string(), "github.com".to_string())
+                }
+            })();
+
+            let extra = format!(
+                "http.{}://{}/.extraheader=AUTHORIZATION: bearer {}",
+                scheme, host, github_token
+            );
+
+            let status = std::process::Command::new("git")
+                .args([
+                    "-C",
+                    &worktree_path.to_string_lossy(),
+                    "-c",
+                    &extra,
+                    "push",
+                    "-u",
+                    &https_url,
+                    branch_name,
+                ])
+                .status()
+                .map_err(GitServiceError::IoError)?;
+
+            if !status.success() { return Err(e); }
+            used_cli_fallback = true;
+        }
+        if !used_cli_fallback {
+            self.fetch_from_remote(&repo, github_token, &remote)?;
+        }
+        if !used_cli_fallback {
+            let mut branch = Self::find_branch(&repo, branch_name)?;
+            if !branch.get().is_remote() {
+                branch.set_upstream(Some(&format!("{remote_name}/{branch_name}")))?;
+            }
         }
 
         Ok(())

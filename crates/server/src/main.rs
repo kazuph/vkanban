@@ -56,7 +56,12 @@ async fn main() -> Result<(), VibeKanbanError> {
             // remove any ANSI codes, then turn into String
             let cleaned =
                 String::from_utf8(strip(s.as_bytes())).expect("UTF-8 after stripping ANSI");
-            cleaned.trim().parse::<u16>().ok()
+            // Be resilient to accidental quotes/newlines from shell or scripts
+            cleaned
+                .trim()
+                .trim_matches('"')
+                .parse::<u16>()
+                .ok()
         })
         .unwrap_or_else(|| {
             tracing::info!("No PORT environment variable set, using port 0 for auto-assignment");

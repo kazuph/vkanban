@@ -19,7 +19,11 @@ impl DBService {
             "sqlite://{}",
             asset_dir().join("db.sqlite").to_string_lossy()
         );
-        let options = SqliteConnectOptions::from_str(&database_url)?.create_if_missing(true);
+        let options = SqliteConnectOptions::from_str(&database_url)?
+            .create_if_missing(true)
+            .journal_mode(sqlx::sqlite::SqliteJournalMode::Wal)
+            .busy_timeout(std::time::Duration::from_secs(5))
+            .foreign_keys(true);
         let pool = SqlitePool::connect_with(options).await?;
         sqlx::migrate!("./migrations").run(&pool).await?;
         Ok(DBService { pool })
@@ -53,7 +57,11 @@ impl DBService {
             "sqlite://{}",
             asset_dir().join("db.sqlite").to_string_lossy()
         );
-        let options = SqliteConnectOptions::from_str(&database_url)?.create_if_missing(true);
+        let options = SqliteConnectOptions::from_str(&database_url)?
+            .create_if_missing(true)
+            .journal_mode(sqlx::sqlite::SqliteJournalMode::Wal)
+            .busy_timeout(std::time::Duration::from_secs(5))
+            .foreign_keys(true);
 
         let pool = if let Some(hook) = after_connect {
             SqlitePoolOptions::new()

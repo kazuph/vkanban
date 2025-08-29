@@ -188,7 +188,9 @@ if (require.main === module) {
     case "frontend":
       getPorts()
         .then((ports) => {
-          console.log(JSON.stringify(ports.frontend, null, 2));
+          // Print a plain number so shell exports don't include quotes
+          // e.g. BACKEND_PORT=$(node scripts/setup-dev-environment.js backend)
+          console.log(String(ports.frontend));
         })
         .catch(console.error);
       break;
@@ -196,7 +198,8 @@ if (require.main === module) {
     case "backend":
       getPorts()
         .then((ports) => {
-          console.log(JSON.stringify(ports.backend, null, 2));
+          // Print a plain number so shell exports don't include quotes
+          console.log(String(ports.backend));
         })
         .catch(console.error);
       break;

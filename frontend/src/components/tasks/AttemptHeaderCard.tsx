@@ -14,6 +14,7 @@ import { useMerge } from '@/hooks/useMerge';
 import { useOpenInEditor } from '@/hooks/useOpenInEditor';
 import { useDiffSummary } from '@/hooks/useDiffSummary';
 import { useCreatePRDialog } from '@/contexts/create-pr-dialog-context';
+import { useBranchStatus } from '@/hooks';
 
 interface AttemptHeaderCardProps {
   attemptNumber: number;
@@ -46,6 +47,7 @@ export function AttemptHeaderCard({
     selectedAttempt?.id ?? null
   );
   const { showCreatePRDialog } = useCreatePRDialog();
+  const { data: branchStatus } = useBranchStatus(selectedAttempt?.id);
 
   const handleCreatePR = () => {
     if (selectedAttempt) {
@@ -56,6 +58,9 @@ export function AttemptHeaderCard({
       });
     }
   };
+  const openPRUrl = branchStatus?.merges?.find(
+    (m) => m.type === 'pr' && m.pr_info.status === 'open'
+  )?.pr_info.url;
 
   return (
     <Card className="border-b border-dashed bg-background flex items-center text-sm">
@@ -116,12 +121,21 @@ export function AttemptHeaderCard({
           >
             Rebase
           </DropdownMenuItem>
-          <DropdownMenuItem
-            onClick={handleCreatePR}
-            disabled={!selectedAttempt}
-          >
-            Create PR
-          </DropdownMenuItem>
+          {openPRUrl ? (
+            <DropdownMenuItem
+              onClick={() => window.open(openPRUrl, '_blank')}
+              disabled={!selectedAttempt}
+            >
+              Open PR
+            </DropdownMenuItem>
+          ) : (
+            <DropdownMenuItem
+              onClick={handleCreatePR}
+              disabled={!selectedAttempt}
+            >
+              Create PR
+            </DropdownMenuItem>
+          )}
           <DropdownMenuItem
             onClick={() => mergeMutation.mutate()}
             disabled={!selectedAttempt}

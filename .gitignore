@@ -81,3 +81,4 @@ dev_assets
 .ssh
 
 vibe-kanban-cloud/
+.sqlx

@@ -62,10 +62,26 @@ export const makeRequest = async (url: string, options: RequestInit = {}) => {
     ...(options.headers || {}),
   };
 
-  return fetch(url, {
-    ...options,
-    headers,
-  });
+  const attempt = async () =>
+    fetch(url, {
+      ...options,
+      headers,
+    });
+
+  // Simple resilience for dev hot-reloads where the backend briefly restarts
+  // Retry a few times on network errors (e.g., ECONNREFUSED)
+  const delays = [250, 500, 1000];
+  for (let i = 0; i < delays.length; i++) {
+    try {
+      return await attempt();
+    } catch (e: any) {
+      // Only retry on fetch/network errors
+      if (i === delays.length - 1) throw e;
+      await new Promise((r) => setTimeout(r, delays[i]));
+    }
+  }
+  // Fallback (should never hit)
+  return attempt();
 };
 
 export interface FollowUpResponse {
