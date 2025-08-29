@@ -38,7 +38,7 @@ use services::services::{
 };
 use sqlx::Error as SqlxError;
 use ts_rs::TS;
-use utils::response::ApiResponse;
+use utils::{browser::open_browser, response::ApiResponse};
 use uuid::Uuid;
 
 use crate::{error::ApiError, middleware::load_task_attempt_middleware, DeploymentImpl};
@@ -504,6 +504,14 @@ pub async fn create_github_pr(
                     }),
                 )
                 .await;
+
+            // Best-effort: open the PR URL in the user's browser. Ignore any error.
+            let pr_url = pr_info.url.clone();
+            tokio::spawn(async move {
+                if let Err(e) = open_browser(&pr_url).await {
+                    tracing::debug!("Failed to open PR in browser (ignored): {}", e);
+                }
+            });
 
             Ok(ResponseJson(ApiResponse::success(pr_info.url)))
         }
