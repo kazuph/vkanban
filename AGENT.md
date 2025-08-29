@@ -1,5 +1,10 @@
 # Agent Guide
 
+## Language Policy
+- Think in English; respond in Japanese by default.
+- If the user explicitly requests another language, follow the request.
+- Keep code, identifiers, and existing comments in their original language unless translation is requested.
+
 ## Commands
 
 Check package.json for available scripts

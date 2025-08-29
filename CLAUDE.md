@@ -2,6 +2,11 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Language Policy
+- Think in English; respond in Japanese by default.
+- If the user explicitly requests another language, follow the request.
+- Keep code, identifiers, and existing comments in their original language unless the task is to translate them.
+
 ## Essential Commands
 
 ### Development
