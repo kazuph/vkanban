@@ -37,12 +37,19 @@ export default defineConfig({
 
   server: {
     port: parseInt(process.env.FRONTEND_PORT || '3000'),
+    // Make HMR explicit to avoid IPv6/host inference issues
+    hmr: {
+      host: 'localhost',
+      protocol: 'ws',
+      clientPort: parseInt(process.env.FRONTEND_PORT || '3000'),
+    },
     proxy: {
       '/api': {
-        target: `http://localhost:${getBackendPort()}`,
+        // Use 127.0.0.1 to avoid IPv6 (::1) resolution mismatches with backend binding
+        target: `http://127.0.0.1:${getBackendPort()}`,
         changeOrigin: true,
         // Dynamically re-read backend port to survive restarts/port changes
-        router: () => `http://localhost:${getBackendPort()}`,
+        router: () => `http://127.0.0.1:${getBackendPort()}`,
         // During backend restarts, proxy will emit noisy ECONNREFUSED logs.
         // Quiet them in dev to avoid terminal spam.
         configure: (proxy) => {
