@@ -189,20 +189,7 @@ function CurrentAttempt({
     }
   };
 
-  const performMerge = async () => {
-    try {
-      setMerging(true);
-      await mergeMutation.mutateAsync();
-      setError(null); // Clear any previous errors on success
-      setMergeSuccess(true);
-      setTimeout(() => setMergeSuccess(false), 2000);
-    } catch (error) {
-      // @ts-expect-error it is type ApiError
-      setError(error.message || 'Failed to merge changes');
-    } finally {
-      setMerging(false);
-    }
-  };
+  // performMerge was unused; logic is handled directly in dialog/button handlers
 
   const handleRebaseClick = async () => {
     // Ask for confirmation before performing an immediate rebase
@@ -619,7 +606,12 @@ function CurrentAttempt({
                 </Button>
                 {mergeInfo.hasOpenPR && mergeInfo.openPR?.type === 'pr' && (
                   <Button
-                    onClick={() => window.open(mergeInfo.openPR!.pr_info.url, '_blank')}
+                    onClick={() => {
+                      const pr = mergeInfo.openPR;
+                      if (pr && pr.type === 'pr') {
+                        window.open(pr.pr_info.url, '_blank');
+                      }
+                    }}
                     variant="outline"
                     size="xs"
                     className="gap-1"
@@ -768,11 +760,12 @@ function CurrentAttempt({
           <DialogHeader>
             <DialogTitle>Merge Changes?</DialogTitle>
             <DialogDescription>
-              This will squash-merge the current attempt branch
+              Squash-merge turns all commits from the attempt branch
               {selectedBranchDisplayName ? ` (${selectedBranchDisplayName})` : ''}
               {branchStatus?.base_branch_name ? ` into ${branchStatus.base_branch_name}` : ''}
-              in your local repository. It will not push to remote.
-              This action cannot be undone from the app.
+              into a single commit on the base branch to keep history linear.
+              No changes are pushed to remote automatically. You can push after
+              it succeeds. This action cannot be undone from the app.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -816,10 +809,14 @@ function CurrentAttempt({
           <DialogHeader>
             <DialogTitle>Rebase Branch?</DialogTitle>
             <DialogDescription>
-              This will rebase the attempt branch onto the configured base
-              branch
-              {branchStatus?.base_branch_name ? ` (${branchStatus.base_branch_name})` : ''}.
-              Rebasing rewrites history and cannot be undone from the app.
+              Rebase will replay the attempt branch’s commits on top of the
+              latest base branch
+              {branchStatus?.base_branch_name ? ` (${branchStatus.base_branch_name})` : ''},
+              rewriting history (commit SHAs change). You may need to resolve
+              conflicts. No changes are pushed to remote automatically; if this
+              branch was pushed before, you’ll likely need to push with
+              force-with-lease after rebasing. This action cannot be undone from
+              the app.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
