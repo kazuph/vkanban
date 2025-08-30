@@ -197,13 +197,13 @@ const handleApiResponse = async <T, E = T>(response: Response): Promise<T> => {
 
 // Project Management APIs
 export const projectsApi = {
-  getAll: async (): Promise<Project[]> => {
-    const response = await makeRequest('/api/projects');
+  getAll: async (signal?: AbortSignal): Promise<Project[]> => {
+    const response = await makeRequest('/api/projects', { signal });
     return handleApiResponse<Project[]>(response);
   },
 
-  getById: async (id: string): Promise<Project> => {
-    const response = await makeRequest(`/api/projects/${id}`);
+  getById: async (id: string, signal?: AbortSignal): Promise<Project> => {
+    const response = await makeRequest(`/api/projects/${id}`, { signal });
     return handleApiResponse<Project>(response);
   },
 
@@ -238,8 +238,8 @@ export const projectsApi = {
     return handleApiResponse<void>(response);
   },
 
-  getBranches: async (id: string): Promise<GitBranch[]> => {
-    const response = await makeRequest(`/api/projects/${id}/branches`);
+  getBranches: async (id: string, signal?: AbortSignal): Promise<GitBranch[]> => {
+    const response = await makeRequest(`/api/projects/${id}/branches`, { signal });
     return handleApiResponse<GitBranch[]>(response);
   },
 
@@ -258,8 +258,13 @@ export const projectsApi = {
 
 // Task Management APIs
 export const tasksApi = {
-  getAll: async (projectId: string): Promise<TaskWithAttemptStatus[]> => {
-    const response = await makeRequest(`/api/tasks?project_id=${projectId}`);
+  getAll: async (
+    projectId: string,
+    signal?: AbortSignal
+  ): Promise<TaskWithAttemptStatus[]> => {
+    const response = await makeRequest(`/api/tasks?project_id=${projectId}`, {
+      signal,
+    });
     return handleApiResponse<TaskWithAttemptStatus[]>(response);
   },
 
@@ -302,15 +307,16 @@ export const tasksApi = {
 
 // Task Attempts APIs
 export const attemptsApi = {
-  getChildren: async (attemptId: string): Promise<Task[]> => {
+  getChildren: async (attemptId: string, signal?: AbortSignal): Promise<Task[]> => {
     const response = await makeRequest(
-      `/api/task-attempts/${attemptId}/children`
+      `/api/task-attempts/${attemptId}/children`,
+      { signal }
     );
     return handleApiResponse<Task[]>(response);
   },
 
-  getAll: async (taskId: string): Promise<TaskAttempt[]> => {
-    const response = await makeRequest(`/api/task-attempts?task_id=${taskId}`);
+  getAll: async (taskId: string, signal?: AbortSignal): Promise<TaskAttempt[]> => {
+    const response = await makeRequest(`/api/task-attempts?task_id=${taskId}`, { signal });
     return handleApiResponse<TaskAttempt[]>(response);
   },
 
@@ -379,9 +385,10 @@ export const attemptsApi = {
     return handleApiResponse<void>(response);
   },
 
-  getBranchStatus: async (attemptId: string): Promise<BranchStatus> => {
+  getBranchStatus: async (attemptId: string, signal?: AbortSignal): Promise<BranchStatus> => {
     const response = await makeRequest(
-      `/api/task-attempts/${attemptId}/branch-status`
+      `/api/task-attempts/${attemptId}/branch-status`,
+      { signal }
     );
     return handleApiResponse<BranchStatus>(response);
   },
@@ -442,16 +449,18 @@ export const attemptsApi = {
 // Execution Process APIs
 export const executionProcessesApi = {
   getExecutionProcesses: async (
-    attemptId: string
+    attemptId: string,
+    signal?: AbortSignal
   ): Promise<ExecutionProcess[]> => {
     const response = await makeRequest(
-      `/api/execution-processes?task_attempt_id=${attemptId}`
+      `/api/execution-processes?task_attempt_id=${attemptId}`,
+      { signal }
     );
     return handleApiResponse<ExecutionProcess[]>(response);
   },
 
-  getDetails: async (processId: string): Promise<ExecutionProcess> => {
-    const response = await makeRequest(`/api/execution-processes/${processId}`);
+  getDetails: async (processId: string, signal?: AbortSignal): Promise<ExecutionProcess> => {
+    const response = await makeRequest(`/api/execution-processes/${processId}`, { signal });
     return handleApiResponse<ExecutionProcess>(response);
   },
 
