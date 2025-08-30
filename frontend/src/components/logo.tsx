@@ -1,4 +1,5 @@
 import { useTheme } from '@/components/theme-provider';
+import { isDarkTheme } from '@/utils/theme';
 import { useEffect, useState } from 'react';
 
 export function Logo({ className = '' }: { className?: string }) {
@@ -6,17 +7,7 @@ export function Logo({ className = '' }: { className?: string }) {
   const [isDark, setIsDark] = useState(false);
 
   useEffect(() => {
-    const updateTheme = () => {
-      if (theme === 'LIGHT') {
-        setIsDark(false);
-      } else if (theme === 'SYSTEM') {
-        // System theme
-        setIsDark(window.matchMedia('(prefers-color-scheme: dark)').matches);
-      } else {
-        // All other themes (dark, purple, green, blue, orange, red) have dark backgrounds
-        setIsDark(true);
-      }
-    };
+    const updateTheme = () => setIsDark(isDarkTheme(theme as any));
 
     updateTheme();
 

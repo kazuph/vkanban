@@ -74,6 +74,238 @@
     --_console-success: 138.5 76.5% 47.7%;
     --_console-error: 0 84.2% 60.2%;
   }
+
+  /* Additional terminal/Vim inspired themes */
+  /* Solarized Dark */
+  .solarized_dark {
+    --_background: 193 100% 11%; /* #002b36 */
+    --_foreground: 186 13% 60%;  /* #93a1a1 */
+    --_primary: var(--_muted);
+    --_primary-foreground: var(--_muted-foreground);
+    --_secondary: var(--_muted);
+    --_secondary-foreground: var(--_foreground);
+    --_muted: 192 82% 14%;       /* #073642 */
+    --_muted-foreground: 186 13% 60%;
+    --_accent: 193 100% 11%;
+    --_accent-foreground: 186 13% 60%;
+    --_destructive: 1 72% 52%;   /* #dc322f */
+    --_destructive-foreground: 45 87% 94%;
+    --_border: 192 22% 25%;
+    --_input: var(--_border);
+    --_ring: 205 82% 49%;        /* #268bd2 */
+
+    --_success: 68 100% 30%;     /* #859900 */
+    --_success-foreground: 45 87% 94%;
+    --_warning: 39 89% 55%;      /* #cb4b16-ish */
+    --_warning-foreground: 45 87% 94%;
+    --_info: 205 82% 49%;        /* #268bd2 */
+    --_info-foreground: 193 100% 11%;
+    --_neutral: 192 82% 14%;
+    --_neutral-foreground: 186 13% 60%;
+
+    --_console-background: 193 100% 11%;
+    --_console-foreground: 186 13% 60%;
+    --_console-success: 68 100% 30%;
+    --_console-error: 1 72% 52%;
+  }
+
+  /* Solarized Light */
+  .solarized_light {
+    --_background: 45 87% 94%;   /* #fdf6e3 */
+    --_foreground: 195 14% 45%;  /* #657b83 */
+    --_primary: var(--_muted);
+    --_primary-foreground: var(--_muted-foreground);
+    --_secondary: var(--_muted);
+    --_secondary-foreground: 195 14% 45%;
+    --_muted: 45 44% 86%;        /* #eee8d5 */
+    --_muted-foreground: 195 14% 45%;
+    --_accent: 45 87% 94%;
+    --_accent-foreground: 195 14% 45%;
+    --_destructive: 1 72% 52%;
+    --_destructive-foreground: 45 87% 94%;
+    --_border: 45 29% 78%;
+    --_input: var(--_border);
+    --_ring: 205 82% 49%;
+
+    --_success: 68 100% 30%;
+    --_success-foreground: 45 87% 94%;
+    --_warning: 39 89% 55%;
+    --_warning-foreground: 26 83% 14%;
+    --_info: 205 82% 49%;
+    --_info-foreground: 195 14% 45%;
+    --_neutral: 45 44% 86%;
+    --_neutral-foreground: 195 14% 45%;
+
+    --_console-background: 0 0% 100%;
+    --_console-foreground: 195 14% 45%;
+    --_console-success: 68 100% 30%;
+    --_console-error: 1 72% 52%;
+  }
+
+  /* Gruvbox Dark */
+  .gruvbox_dark {
+    --_background: 0 0% 16%;     /* #282828 */
+    --_foreground: 41 55% 83%;   /* #ebdbb2 */
+    --_primary: var(--_muted);
+    --_primary-foreground: var(--_muted-foreground);
+    --_secondary: var(--_muted);
+    --_secondary-foreground: 41 55% 83%;
+    --_muted: 20 7% 22%;         /* #3c3836 */
+    --_muted-foreground: 41 55% 83%;
+    --_accent: 0 0% 16%;
+    --_accent-foreground: 41 55% 83%;
+    --_destructive: 4 97% 59%;   /* #fb4934 */
+    --_destructive-foreground: 0 0% 100%;
+    --_border: 20 10% 30%;       /* #504945 */
+    --_input: var(--_border);
+    --_ring: 35 48% 50%;         /* approx gruvbox yellow */
+
+    --_success: 64 64% 45%;      /* #b8bb26 */
+    --_success-foreground: 0 0% 0%;
+    --_warning: 35 74% 51%;      /* #fabd2f */
+    --_warning-foreground: 20 7% 22%;
+    --_info: 207 32% 45%;        /* #83a598 */
+    --_info-foreground: 0 0% 16%;
+    --_neutral: 20 7% 22%;
+    --_neutral-foreground: 41 55% 83%;
+
+    --_console-background: 0 0% 0%;
+    --_console-foreground: 41 55% 83%;
+    --_console-success: 64 64% 45%;
+    --_console-error: 4 97% 59%;
+  }
+
+  /* Gruvbox Light */
+  .gruvbox_light {
+    --_background: 44 77% 88%;   /* #fbf1c7 */
+    --_foreground: 20 7% 22%;    /* #3c3836 */
+    --_primary: var(--_muted);
+    --_primary-foreground: var(--_muted-foreground);
+    --_secondary: var(--_muted);
+    --_secondary-foreground: 20 7% 22%;
+    --_muted: 44 62% 84%;        /* #f2e5bc */
+    --_muted-foreground: 20 7% 22%;
+    --_accent: 44 77% 88%;
+    --_accent-foreground: 20 7% 22%;
+    --_destructive: 3 72% 46%;   /* #cc241d */
+    --_destructive-foreground: 44 77% 88%;
+    --_border: 40 36% 73%;       /* #d5c4a1 */
+    --_input: var(--_border);
+    --_ring: 35 74% 51%;
+
+    --_success: 65 70% 35%;      /* approx green */
+    --_success-foreground: 44 77% 88%;
+    --_warning: 35 74% 51%;
+    --_warning-foreground: 20 7% 22%;
+    --_info: 207 32% 45%;
+    --_info-foreground: 20 7% 22%;
+    --_neutral: 44 62% 84%;
+    --_neutral-foreground: 20 7% 22%;
+
+    --_console-background: 0 0% 100%;
+    --_console-foreground: 20 7% 22%;
+    --_console-success: 65 70% 35%;
+    --_console-error: 3 72% 46%;
+  }
+
+  /* Nord */
+  .nord {
+    --_background: 220 16% 21%;  /* #2e3440 */
+    --_foreground: 213 28% 87%;  /* #d8dee9 */
+    --_primary: var(--_muted);
+    --_primary-foreground: var(--_muted-foreground);
+    --_secondary: var(--_muted);
+    --_secondary-foreground: 213 28% 87%;
+    --_muted: 220 16% 27%;       /* #3b4252 */
+    --_muted-foreground: 213 28% 87%;
+    --_accent: 220 16% 21%;
+    --_accent-foreground: 213 28% 87%;
+    --_destructive: 354 43% 56%; /* #bf616a */
+    --_destructive-foreground: 213 28% 87%;
+    --_border: 220 17% 32%;      /* #434c5e */
+    --_input: var(--_border);
+    --_ring: 210 34% 63%;        /* #88c0d0 */
+
+    --_success: 92 31% 66%;      /* #a3be8c */
+    --_success-foreground: 220 16% 21%;
+    --_warning: 27 58% 67%;      /* #ebcb8b */
+    --_warning-foreground: 220 16% 21%;
+    --_info: 210 34% 63%;        /* #88c0d0 */
+    --_info-foreground: 220 16% 21%;
+    --_neutral: 220 16% 27%;
+    --_neutral-foreground: 213 28% 87%;
+
+    --_console-background: 0 0% 0%;
+    --_console-foreground: 213 28% 87%;
+    --_console-success: 92 31% 66%;
+    --_console-error: 354 43% 56%;
+  }
+
+  /* One Dark */
+  .one_dark {
+    --_background: 220 13% 18%;  /* #282c34 */
+    --_foreground: 213 14% 72%;  /* #abb2bf */
+    --_primary: var(--_muted);
+    --_primary-foreground: var(--_muted-foreground);
+    --_secondary: var(--_muted);
+    --_secondary-foreground: 213 14% 72%;
+    --_muted: 220 11% 20%;       /* #2c313a */
+    --_muted-foreground: 213 14% 72%;
+    --_accent: 220 13% 18%;
+    --_accent-foreground: 213 14% 72%;
+    --_destructive: 355 69% 67%; /* #e06c75 */
+    --_destructive-foreground: 0 0% 0%;
+    --_border: 220 12% 27%;      /* #3e4451 */
+    --_input: var(--_border);
+    --_ring: 207 82% 66%;        /* #61afef */
+
+    --_success: 96 38% 63%;      /* #98c379 */
+    --_success-foreground: 220 13% 18%;
+    --_warning: 39 89% 55%;      /* #e5c07b-ish */
+    --_warning-foreground: 220 13% 18%;
+    --_info: 207 82% 66%;        /* #61afef */
+    --_info-foreground: 220 13% 18%;
+    --_neutral: 220 11% 20%;
+    --_neutral-foreground: 213 14% 72%;
+
+    --_console-background: 0 0% 0%;
+    --_console-foreground: 213 14% 72%;
+    --_console-success: 96 38% 63%;
+    --_console-error: 355 69% 67%;
+  }
+
+  /* Dracula */
+  .dracula {
+    --_background: 232 15% 19%;  /* #282a36 */
+    --_foreground: 60 30% 96%;   /* #f8f8f2 */
+    --_primary: var(--_muted);
+    --_primary-foreground: var(--_muted-foreground);
+    --_secondary: var(--_muted);
+    --_secondary-foreground: 60 30% 96%;
+    --_muted: 231 16% 31%;       /* #44475a */
+    --_muted-foreground: 60 30% 96%;
+    --_accent: 232 15% 19%;
+    --_accent-foreground: 60 30% 96%;
+    --_destructive: 0 100% 67%;  /* #ff5555 */
+    --_destructive-foreground: 0 0% 0%;
+    --_border: 225 28% 51%;      /* #6272a4 */
+    --_input: var(--_border);
+    --_ring: 261 89% 76%;        /* #bd93f9 */
+
+    --_success: 135 94% 65%;     /* #50fa7b */
+    --_success-foreground: 232 15% 19%;
+    --_warning: 65 92% 76%;      /* #f1fa8c */
+    --_warning-foreground: 232 15% 19%;
+    --_info: 191 97% 77%;        /* #8be9fd */
+    --_info-foreground: 232 15% 19%;
+    --_neutral: 231 16% 31%;
+    --_neutral-foreground: 60 30% 96%;
+
+    --_console-background: 0 0% 0%;
+    --_console-foreground: 60 30% 96%;
+    --_console-success: 135 94% 65%;
+    --_console-error: 0 100% 67%;
+  }
 }
 
 /* 2) PUBLIC TOKENS: prefer VS Code, else fall back to theme tokens */

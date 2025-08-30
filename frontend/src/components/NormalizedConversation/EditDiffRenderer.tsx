@@ -12,6 +12,7 @@ import { useConfig } from '@/components/config-provider';
 import { getHighLightLanguageFromPath } from '@/utils/extToLanguage';
 import '@/styles/diff-style-overrides.css';
 import '@/styles/edit-diff-overrides.css';
+import { isDarkTheme } from '@/utils/theme';
 
 type Props = {
   path: string;
@@ -67,10 +68,11 @@ function EditDiffRenderer({
   const { config } = useConfig();
   const [expanded, setExpanded] = useExpandable(expansionKey, false);
 
-  let theme: 'light' | 'dark' | undefined = 'light';
-  if (config?.theme === ThemeMode.DARK) {
-    theme = 'dark';
-  }
+  const theme: 'light' | 'dark' | undefined = isDarkTheme(
+    config?.theme || ThemeMode.SYSTEM
+  )
+    ? 'dark'
+    : 'light';
 
   const { hunks, hideLineNumbers, additions, deletions, isValidDiff } = useMemo(
     () => processUnifiedDiff(unifiedDiff, hasLineNumbers),

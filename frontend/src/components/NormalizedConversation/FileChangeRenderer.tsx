@@ -13,6 +13,7 @@ import EditDiffRenderer from './EditDiffRenderer';
 import FileContentView from './FileContentView';
 import '@/styles/diff-style-overrides.css';
 import { useExpandable } from '@/stores/useExpandableStore';
+import { isDarkTheme } from '@/utils/theme';
 
 type Props = {
   path: string;
@@ -45,8 +46,11 @@ const FileChangeRenderer = ({ path, change, expansionKey }: Props) => {
   const { config } = useConfig();
   const [expanded, setExpanded] = useExpandable(expansionKey, false);
 
-  let theme: 'light' | 'dark' | undefined = 'light';
-  if (config?.theme === ThemeMode.DARK) theme = 'dark';
+  const theme: 'light' | 'dark' | undefined = isDarkTheme(
+    config?.theme || ThemeMode.SYSTEM
+  )
+    ? 'dark'
+    : 'light';
 
   // Edit: delegate to EditDiffRenderer for identical styling and behavior
   if (isEdit(change)) {

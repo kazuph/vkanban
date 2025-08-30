@@ -19,6 +19,7 @@ import {
 import '@/styles/diff-style-overrides.css';
 import { attemptsApi } from '@/lib/api';
 import type { TaskAttempt } from 'shared/types';
+import { isDarkTheme } from '@/utils/theme';
 
 type Props = {
   diff: Diff;
@@ -46,7 +47,7 @@ export default function DiffCard({
   selectedAttempt,
 }: Props) {
   const { config } = useConfig();
-  const theme = config?.theme === ThemeMode.DARK ? 'dark' : 'light';
+  const theme = isDarkTheme(config?.theme || ThemeMode.SYSTEM) ? 'dark' : 'light';
 
   const oldName = diff.oldPath || undefined;
   const newName = diff.newPath || oldName || 'unknown';

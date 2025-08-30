@@ -40,7 +40,15 @@ export function ThemeProvider({
       'green',
       'blue',
       'orange',
-      'red'
+      'red',
+      // Additional schemes
+      'solarized_dark',
+      'solarized_light',
+      'gruvbox_dark',
+      'gruvbox_light',
+      'nord',
+      'one_dark',
+      'dracula'
     );
 
     if (theme === ThemeMode.SYSTEM) {
