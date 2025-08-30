@@ -82,3 +82,7 @@ dev_assets
 
 vibe-kanban-cloud/
 .sqlx
+
+# Local worktrees and caches
+project.worktree/
+frontend/.npm-cache/
