@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useReducer, useState } from 'react';
 import { Play } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { projectsApi } from '@/lib/api';
 import { useProjectBranches } from '@/hooks/useProjectBranches';
 import type {
   GitBranch,

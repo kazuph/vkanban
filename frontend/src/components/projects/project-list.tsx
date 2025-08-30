@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   useKanbanKeyboardNavigation,
@@ -17,7 +17,7 @@ import ProjectCard from '@/components/projects/ProjectCard.tsx';
 export function ProjectList() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { data: projects = [], isLoading, isError } = useQuery({
+  const { data: projects = [], isLoading } = useQuery({
     queryKey: ['projects'],
     queryFn: ({ signal }) => projectsApi.getAll(signal),
     staleTime: 10_000,

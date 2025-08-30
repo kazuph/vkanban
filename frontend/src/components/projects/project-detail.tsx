@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
@@ -11,7 +11,6 @@ import {
 } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Project } from 'shared/types';
 import { ProjectForm } from './project-form';
 import { projectsApi } from '@/lib/api';
 import {
