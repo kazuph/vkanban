@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import {
   Play,
   Square,
@@ -62,23 +63,33 @@ function ProcessesTab({ attemptId }: ProcessesTabProps) {
     return date.toLocaleString();
   };
 
-  const fetchProcessDetails = async (processId: string) => {
-    try {
-      setLoadingProcessId(processId);
-      const result = await executionProcessesApi.getDetails(processId);
+  // Query details for the selected process when needed
+  const detailsQuery = useQuery({
+    queryKey: ['processDetails', selectedProcessId ?? 'none'],
+    queryFn: ({ signal }) => executionProcessesApi.getDetails(selectedProcessId as string, signal),
+    enabled:
+      !!selectedProcessId &&
+      !attemptData.runningProcessDetails[selectedProcessId] &&
+      !localProcessDetails[selectedProcessId],
+  });
 
-      if (result !== undefined) {
-        setLocalProcessDetails((prev) => ({
-          ...prev,
-          [processId]: result,
-        }));
-      }
-    } catch (err) {
-      console.error('Failed to fetch process details:', err);
-    } finally {
+  // Provide an explicit fetch helper for clarity where referenced below
+  const fetchProcessDetails = async (_id: string) => {
+    await detailsQuery.refetch();
+  };
+  useEffect(() => {
+    if (detailsQuery.isLoading && selectedProcessId) {
+      setLoadingProcessId(selectedProcessId);
+    } else {
       setLoadingProcessId(null);
     }
-  };
+    if (detailsQuery.data && selectedProcessId) {
+      setLocalProcessDetails((prev) => ({
+        ...prev,
+        [selectedProcessId]: detailsQuery.data as ExecutionProcess,
+      }));
+    }
+  }, [detailsQuery.isLoading, detailsQuery.data, selectedProcessId]);
 
   // Automatically fetch process details when selectedProcessId changes
   useEffect(() => {
@@ -97,14 +108,7 @@ function ProcessesTab({ attemptId }: ProcessesTabProps) {
 
   const handleProcessClick = async (process: ExecutionProcess) => {
     setSelectedProcessId(process.id);
-
-    // If we don't have details for this process, fetch them
-    if (
-      !attemptData.runningProcessDetails[process.id] &&
-      !localProcessDetails[process.id]
-    ) {
-      await fetchProcessDetails(process.id);
-    }
+    // Details fetch is handled by detailsQuery via selectedProcessId
   };
 
   const selectedProcess = selectedProcessId
