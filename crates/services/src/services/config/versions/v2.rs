@@ -389,6 +389,14 @@ pub enum ThemeMode {
     Blue,
     Orange,
     Red,
+    // Popular terminal/Vim-like themes
+    SolarizedDark,
+    SolarizedLight,
+    GruvboxDark,
+    GruvboxLight,
+    Nord,
+    OneDark,
+    Dracula,
 }
 
 impl From<v1::ThemeMode> for ThemeMode {

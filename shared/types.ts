@@ -76,24 +76,7 @@ export type Config = { config_version: string, theme: ThemeMode, profile: Profil
 
 export type NotificationConfig = { sound_enabled: boolean, push_enabled: boolean, sound_file: SoundFile, };
 
-export enum ThemeMode {
-  LIGHT = "LIGHT",
-  DARK = "DARK",
-  SYSTEM = "SYSTEM",
-  PURPLE = "PURPLE",
-  GREEN = "GREEN",
-  BLUE = "BLUE",
-  ORANGE = "ORANGE",
-  RED = "RED",
-  // Popular terminal/Vim-like themes
-  SOLARIZED_DARK = "SOLARIZED_DARK",
-  SOLARIZED_LIGHT = "SOLARIZED_LIGHT",
-  GRUVBOX_DARK = "GRUVBOX_DARK",
-  GRUVBOX_LIGHT = "GRUVBOX_LIGHT",
-  NORD = "NORD",
-  ONE_DARK = "ONE_DARK",
-  DRACULA = "DRACULA",
-}
+export enum ThemeMode { LIGHT = "LIGHT", DARK = "DARK", SYSTEM = "SYSTEM", PURPLE = "PURPLE", GREEN = "GREEN", BLUE = "BLUE", ORANGE = "ORANGE", RED = "RED", SOLARIZED_DARK = "SOLARIZED_DARK", SOLARIZED_LIGHT = "SOLARIZED_LIGHT", GRUVBOX_DARK = "GRUVBOX_DARK", GRUVBOX_LIGHT = "GRUVBOX_LIGHT", NORD = "NORD", ONE_DARK = "ONE_DARK", DRACULA = "DRACULA" }
 
 export type EditorConfig = { editor_type: EditorType, custom_command: string | null, };
 
