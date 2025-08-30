@@ -21,6 +21,7 @@ import {
   Trash2,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import { projectsApi } from '@/lib/api.ts';
 import { Project } from 'shared/types';
 import { useEffect, useRef } from 'react';
@@ -28,7 +29,6 @@ import { useEffect, useRef } from 'react';
 type Props = {
   project: Project;
   isFocused: boolean;
-  fetchProjects: () => void;
   setError: (error: string) => void;
   setEditingProject: (project: Project) => void;
   setShowForm: (show: boolean) => void;
@@ -37,12 +37,12 @@ type Props = {
 function ProjectCard({
   project,
   isFocused,
-  fetchProjects,
   setError,
   setEditingProject,
   setShowForm,
 }: Props) {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -62,7 +62,7 @@ function ProjectCard({
 
     try {
       await projectsApi.delete(id);
-      fetchProjects();
+      await queryClient.invalidateQueries({ queryKey: ['projects'] });
     } catch (error) {
       console.error('Failed to delete project:', error);
       setError('Failed to delete project');

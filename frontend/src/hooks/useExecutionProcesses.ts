@@ -5,7 +5,7 @@ import type { ExecutionProcess } from 'shared/types';
 export function useExecutionProcesses(attemptId?: string) {
   const query = useQuery({
     queryKey: ['executionProcesses', attemptId],
-    queryFn: () => executionProcessesApi.getExecutionProcesses(attemptId!),
+    queryFn: ({ signal }) => executionProcessesApi.getExecutionProcesses(attemptId!, signal),
     enabled: !!attemptId,
     refetchInterval: () => {
       // Always poll every 5 seconds when enabled - we'll control this via enabled

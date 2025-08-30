@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import {
   Card,
   CardContent,
@@ -21,6 +21,7 @@ import { Loader2 } from 'lucide-react';
 import { ProfileConfig, McpConfig } from 'shared/types';
 import { useUserSystem } from '@/components/config-provider';
 import { mcpServersApi } from '../lib/api';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { McpConfigStrategyGeneral } from '../lib/mcp-strategies';
 
 export function McpServers() {
@@ -28,6 +29,7 @@ export function McpServers() {
   const [mcpServers, setMcpServers] = useState('{}');
   const [mcpConfig, setMcpConfig] = useState<McpConfig | null>(null);
   const [mcpError, setMcpError] = useState<string | null>(null);
+  const queryClient = useQueryClient();
   const [mcpLoading, setMcpLoading] = useState(true);
   const [selectedProfile, setSelectedProfile] = useState<ProfileConfig | null>(
     null
@@ -52,45 +54,28 @@ export function McpServers() {
     }
   }, [config?.profile, profiles, selectedProfile]);
 
-  // Load existing MCP configuration when selected profile changes
+  // Query to load MCP config for selected profile
+  const selectedProfileLabel = selectedProfile?.label ?? '';
+  const mcpQuery = useQuery({
+    queryKey: ['mcp-config', selectedProfileLabel],
+    queryFn: () => mcpServersApi.load({ profile: selectedProfileLabel }),
+    enabled: !!selectedProfileLabel,
+    staleTime: 30_000,
+  });
+
+  // Reflect query state into local editor state
   useEffect(() => {
-    const loadMcpServersForProfile = async (profile: ProfileConfig) => {
-      // Reset state when loading
-      setMcpLoading(true);
-      setMcpError(null);
-      // Set default empty config based on agent type using strategy
-      setMcpConfigPath('');
-
-      try {
-        // Load MCP servers for the selected profile/agent
-        const result = await mcpServersApi.load({
-          profile: profile.label,
-        });
-        // Store the McpConfig from backend
-        setMcpConfig(result.mcp_config);
-        // Create the full configuration structure using the schema
-        const fullConfig = McpConfigStrategyGeneral.createFullConfig(
-          result.mcp_config
-        );
-        const configJson = JSON.stringify(fullConfig, null, 2);
-        setMcpServers(configJson);
-        setMcpConfigPath(result.config_path);
-      } catch (err: any) {
-        if (err?.message && err.message.includes('does not support MCP')) {
-          setMcpError(err.message);
-        } else {
-          console.error('Error loading MCP servers:', err);
-        }
-      } finally {
-        setMcpLoading(false);
-      }
-    };
-
-    // Load MCP servers for the selected profile
-    if (selectedProfile) {
-      loadMcpServersForProfile(selectedProfile);
+    setMcpLoading(mcpQuery.isLoading);
+    setMcpError(mcpQuery.isError ? (mcpQuery.error as any)?.message : null);
+    if (mcpQuery.data) {
+      setMcpConfig(mcpQuery.data.mcp_config);
+      const fullConfig = McpConfigStrategyGeneral.createFullConfig(
+        mcpQuery.data.mcp_config
+      );
+      setMcpServers(JSON.stringify(fullConfig, null, 2));
+      setMcpConfigPath(mcpQuery.data.config_path);
     }
-  }, [selectedProfile]);
+  }, [mcpQuery.isLoading, mcpQuery.isError, mcpQuery.error, mcpQuery.data]);
 
   const handleMcpServersChange = (value: string) => {
     setMcpServers(value);
@@ -135,51 +120,44 @@ export function McpServers() {
     }
   };
 
+  // Mutation to save MCP config
+  const saveMutation = useMutation({
+    mutationFn: async () => {
+      if (!selectedProfile || !mcpConfig) return;
+      if (!mcpServers.trim()) return;
+      const fullConfig = JSON.parse(mcpServers);
+      McpConfigStrategyGeneral.validateFullConfig(mcpConfig, fullConfig);
+      const mcpServersConfig = McpConfigStrategyGeneral.extractServersForApi(
+        mcpConfig,
+        fullConfig
+      );
+      await mcpServersApi.save(
+        { profile: selectedProfile.label },
+        { servers: mcpServersConfig }
+      );
+    },
+    onSuccess: async () => {
+      setSuccess(true);
+      setTimeout(() => setSuccess(false), 3000);
+      // Refresh the loaded config
+      await queryClient.invalidateQueries({
+        queryKey: ['mcp-config', selectedProfile?.label],
+      });
+    },
+    onError: (err: any) => {
+      setMcpError(err?.message || 'Failed to apply MCP server configuration');
+    },
+    onSettled: () => setMcpApplying(false),
+  });
+
   const handleApplyMcpServers = async () => {
     if (!selectedProfile || !mcpConfig) return;
-
     setMcpApplying(true);
     setMcpError(null);
-
     try {
-      // Validate and save MCP configuration
-      if (mcpServers.trim()) {
-        try {
-          const fullConfig = JSON.parse(mcpServers);
-          McpConfigStrategyGeneral.validateFullConfig(mcpConfig, fullConfig);
-          const mcpServersConfig =
-            McpConfigStrategyGeneral.extractServersForApi(
-              mcpConfig,
-              fullConfig
-            );
-
-          await mcpServersApi.save(
-            {
-              profile: selectedProfile.label,
-            },
-            { servers: mcpServersConfig }
-          );
-
-          // Show success feedback
-          setSuccess(true);
-          setTimeout(() => setSuccess(false), 3000);
-        } catch (mcpErr) {
-          if (mcpErr instanceof SyntaxError) {
-            setMcpError('Invalid JSON format');
-          } else {
-            setMcpError(
-              mcpErr instanceof Error
-                ? mcpErr.message
-                : 'Failed to save MCP servers'
-            );
-          }
-        }
-      }
-    } catch (err) {
-      setMcpError('Failed to apply MCP server configuration');
-      console.error('Error applying MCP servers:', err);
-    } finally {
-      setMcpApplying(false);
+      await saveMutation.mutateAsync();
+    } catch (_) {
+      // handled in onError
     }
   };
 

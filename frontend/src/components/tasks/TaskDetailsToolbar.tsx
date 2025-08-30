@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useReducer, useState } from 'react';
 import { Play } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { projectsApi } from '@/lib/api';
+import { useProjectBranches } from '@/hooks/useProjectBranches';
 import type {
   GitBranch,
   ProfileVariantLabel,
@@ -126,20 +127,17 @@ function TaskDetailsToolbar({
     return selectedBranch;
   }, [latestAttempt, branches, selectedBranch]);
 
-  const fetchProjectBranches = useCallback(async () => {
-    const result = await projectsApi.getBranches(projectId);
-
-    setBranches(result);
-    // Set current branch as default
-    const currentBranch = result.find((b) => b.is_current);
-    if (currentBranch) {
-      setSelectedBranch((prev) => (!prev ? currentBranch.name : prev));
-    }
-  }, [projectId]);
-
+  // Fetch branches via React Query hook
+  const branchesQuery = useProjectBranches(projectId);
   useEffect(() => {
-    fetchProjectBranches();
-  }, [fetchProjectBranches]);
+    if (branchesQuery.data) {
+      setBranches(branchesQuery.data);
+      const currentBranch = branchesQuery.data.find((b) => b.is_current);
+      if (currentBranch) {
+        setSelectedBranch((prev) => (!prev ? currentBranch.name : prev));
+      }
+    }
+  }, [branchesQuery.data]);
 
   // Set default executor from config
   useEffect(() => {

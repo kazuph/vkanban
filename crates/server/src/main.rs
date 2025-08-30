@@ -6,8 +6,12 @@ use strip_ansi_escapes::strip;
 use thiserror::Error;
 use tracing_subscriber::{prelude::*, EnvFilter};
 use utils::{
-    assets::asset_dir, browser::open_browser, port_file::write_port_file, sentry::sentry_layer,
+    assets::{asset_dir, profiles_path},
+    browser::open_browser,
+    port_file::write_port_file,
+    sentry::sentry_layer,
 };
+use executors::profile::ProfileConfigs;
 
 #[derive(Debug, Error)]
 pub enum VibeKanbanError {
@@ -37,6 +41,21 @@ async fn main() -> Result<(), VibeKanbanError> {
     // Create asset directory if it doesn't exist
     if !asset_dir().exists() {
         std::fs::create_dir_all(asset_dir())?;
+    }
+
+    // Ensure profiles.json exists so the frontend can read/edit it without warnings
+    let profiles_path = profiles_path();
+    if !profiles_path.exists() {
+        match serde_json::to_string_pretty(&ProfileConfigs::from_defaults()) {
+            Ok(defaults) => {
+                if let Err(e) = std::fs::write(&profiles_path, defaults) {
+                    tracing::warn!("Failed to create default profiles.json at {:?}: {}", profiles_path, e);
+                } else {
+                    tracing::info!("Created default profiles.json at {:?}", profiles_path);
+                }
+            }
+            Err(e) => tracing::warn!("Failed to serialize default profiles.json: {}", e),
+        }
     }
 
     let deployment = DeploymentImpl::new().await?;

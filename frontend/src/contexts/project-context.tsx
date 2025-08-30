@@ -29,7 +29,7 @@ export function ProjectProvider({ children }: ProjectProviderProps) {
 
   const query = useQuery({
     queryKey: ['project', projectId],
-    queryFn: () => projectsApi.getById(projectId!),
+    queryFn: ({ signal }) => projectsApi.getById(projectId!, signal),
     enabled: !!projectId,
     staleTime: 5 * 60 * 1000, // 5 minutes
   });

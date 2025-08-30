@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import {
@@ -32,8 +33,12 @@ interface ProjectDetailProps {
 
 export function ProjectDetail({ projectId, onBack }: ProjectDetailProps) {
   const navigate = useNavigate();
-  const [project, setProject] = useState<Project | null>(null);
-  const [loading, setLoading] = useState(false);
+  const queryClient = useQueryClient();
+  const { data: project, isLoading: loading } = useQuery({
+    queryKey: ['project', projectId],
+    queryFn: ({ signal }) => projectsApi.getById(projectId, signal),
+    staleTime: 30_000,
+  });
   const [showEditForm, setShowEditForm] = useState(false);
   const [error, setError] = useState('');
 
@@ -42,21 +47,9 @@ export function ProjectDetail({ projectId, onBack }: ProjectDetailProps) {
     currentPath: `/projects/${projectId}`,
   });
 
-  const fetchProject = useCallback(async () => {
-    setLoading(true);
-    setError('');
-
-    try {
-      const result = await projectsApi.getById(projectId);
-      setProject(result);
-    } catch (error) {
-      console.error('Failed to fetch project:', error);
-      // @ts-expect-error it is type ApiError
-      setError(error.message || 'Failed to load project');
-    }
-
-    setLoading(false);
-  }, [projectId]);
+  const refetchProject = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: ['project', projectId] });
+  }, [queryClient, projectId]);
 
   const handleDelete = async () => {
     if (!project) return;
@@ -70,6 +63,7 @@ export function ProjectDetail({ projectId, onBack }: ProjectDetailProps) {
     try {
       await projectsApi.delete(projectId);
       onBack();
+      await queryClient.invalidateQueries({ queryKey: ['projects'] });
     } catch (error) {
       console.error('Failed to delete project:', error);
       // @ts-expect-error it is type ApiError
@@ -79,12 +73,8 @@ export function ProjectDetail({ projectId, onBack }: ProjectDetailProps) {
 
   const handleEditSuccess = () => {
     setShowEditForm(false);
-    fetchProject();
+    refetchProject();
   };
-
-  useEffect(() => {
-    fetchProject();
-  }, [fetchProject]);
 
   if (loading) {
     return (

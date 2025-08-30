@@ -17,7 +17,7 @@ export function useAttemptExecution(attemptId?: string, taskId?: string) {
     refetch,
   } = useQuery({
     queryKey: ['executionProcesses', attemptId],
-    queryFn: () => executionProcessesApi.getExecutionProcesses(attemptId!),
+    queryFn: ({ signal }) => executionProcessesApi.getExecutionProcesses(attemptId!, signal),
     enabled: !!attemptId,
     refetchInterval: 5000,
     select: (data) => ({
@@ -44,7 +44,7 @@ export function useAttemptExecution(attemptId?: string, taskId?: string) {
   const processDetailQueries = useQueries({
     queries: setupProcesses.map((process) => ({
       queryKey: ['processDetails', process.id],
-      queryFn: () => executionProcessesApi.getDetails(process.id),
+      queryFn: ({ signal }) => executionProcessesApi.getDetails(process.id, signal),
       enabled: !!process.id,
     })),
   });
