@@ -19,6 +19,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { templatesApi, imagesApi } from '@/lib/api';
+import { useQuery } from '@tanstack/react-query';
 import type { TaskStatus, TaskTemplate, ImageResponse } from 'shared/types';
 
 interface Task {
@@ -123,17 +124,6 @@ export function TaskFormDialog({
       setTitle(task.title);
       setDescription(task.description || '');
       setStatus(task.status);
-
-      // Load existing images for the task
-      if (isOpen) {
-        imagesApi
-          .getTaskImages(task.id)
-          .then((taskImages) => setImages(taskImages))
-          .catch((err) => {
-            console.error('Failed to load task images:', err);
-            setImages([]);
-          });
-      }
     } else if (initialTask) {
       // Duplicate mode - pre-fill from existing task but reset status to 'todo' and no images
       setTitle(initialTask.title);
@@ -159,21 +149,37 @@ export function TaskFormDialog({
     }
   }, [task, initialTask, initialTemplate, isOpen]);
 
-  // Fetch templates when dialog opens in create mode
+  // Fetch templates when dialog opens in create mode (React Query)
+  const projectTemplatesQuery = useQuery({
+    queryKey: ['templates', 'project', projectId ?? 'none'],
+    queryFn: ({ signal }) => templatesApi.listByProject(projectId!, signal),
+    enabled: !!projectId && isOpen && !isEditMode,
+    staleTime: 30_000,
+  });
+  const globalTemplatesQuery = useQuery({
+    queryKey: ['templates', 'global'],
+    queryFn: ({ signal }) => templatesApi.listGlobal(signal),
+    enabled: isOpen && !isEditMode,
+    staleTime: 30_000,
+  });
   useEffect(() => {
-    if (isOpen && !isEditMode && projectId) {
-      // Fetch both project and global templates
-      Promise.all([
-        templatesApi.listByProject(projectId),
-        templatesApi.listGlobal(),
-      ])
-        .then(([projectTemplates, globalTemplates]) => {
-          // Combine templates with project templates first
-          setTemplates([...projectTemplates, ...globalTemplates]);
-        })
-        .catch(console.error);
-    }
-  }, [isOpen, isEditMode, projectId]);
+    if (!isOpen || isEditMode) return;
+    const list: TaskTemplate[] = [];
+    if (projectTemplatesQuery.data) list.push(...projectTemplatesQuery.data);
+    if (globalTemplatesQuery.data) list.push(...globalTemplatesQuery.data);
+    if (list.length) setTemplates(list);
+  }, [isOpen, isEditMode, projectTemplatesQuery.data, globalTemplatesQuery.data]);
+
+  // Load task images when editing and dialog is open
+  const taskImagesQuery = useQuery({
+    queryKey: ['taskImages', task?.id ?? 'none'],
+    queryFn: ({ signal }) => imagesApi.getTaskImages(task!.id, signal),
+    enabled: isOpen && isEditMode && !!task?.id,
+    staleTime: 0,
+  });
+  useEffect(() => {
+    if (taskImagesQuery.data) setImages(taskImagesQuery.data);
+  }, [taskImagesQuery.data]);
 
   // Handle template selection
   const handleTemplateChange = (templateId: string) => {
