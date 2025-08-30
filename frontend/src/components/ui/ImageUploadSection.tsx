@@ -10,6 +10,7 @@ import { Button } from './button';
 import { Alert, AlertDescription } from './alert';
 import { cn } from '@/lib/utils';
 import { imagesApi } from '@/lib/api';
+import { useQueryClient } from '@tanstack/react-query';
 import type { ImageResponse } from 'shared/types';
 
 interface ImageUploadSectionProps {
@@ -46,6 +47,7 @@ export function ImageUploadSection({
   const [uploadingFiles, setUploadingFiles] = useState<Set<string>>(new Set());
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const queryClient = useQueryClient();
 
   const handleFileSelect = useCallback(
     async (files: FileList | null) => {
@@ -153,13 +155,15 @@ export function ImageUploadSection({
       if (onDelete) {
         try {
           await onDelete(imageId);
+          // Invalidate any cached task images lists
+          queryClient.invalidateQueries({ queryKey: ['taskImages'] });
         } catch (error) {
           console.error('Failed to delete image:', error);
         }
       }
       onImagesChange(images.filter((img) => img.id !== imageId));
     },
-    [images, onImagesChange, onDelete]
+    [images, onImagesChange, onDelete, queryClient]
   );
 
   const formatFileSize = (bytes: bigint) => {
