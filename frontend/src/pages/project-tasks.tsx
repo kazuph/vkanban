@@ -10,7 +10,7 @@ import { ProjectForm } from '@/components/projects/project-form';
 import { TaskTemplateManager } from '@/components/TaskTemplateManager';
 import { useKeyboardShortcuts } from '@/lib/keyboard-shortcuts';
 import { useSearch } from '@/contexts/search-context';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 import {
   Dialog,
@@ -43,7 +43,7 @@ export function ProjectTasks() {
 
   const [tasks, setTasks] = useState<Task[]>([]);
   const [project, setProject] = useState<Project | null>(null);
-  const [loading, setLoading] = useState(true);
+  // Local loading removed for tasks; rely on React Query
   const [error, setError] = useState<string | null>(null);
   const { openCreate, openEdit, openDuplicate } = useTaskDialog();
   const [isProjectSettingsOpen, setIsProjectSettingsOpen] = useState(false);
@@ -62,7 +62,7 @@ export function ProjectTasks() {
   // Attempts fetching (only when task is selected)
   const { data: attempts = [] } = useQuery({
     queryKey: ['taskAttempts', selectedTask?.id],
-    queryFn: () => attemptsApi.getAll(selectedTask!.id),
+    queryFn: ({ signal }) => attemptsApi.getAll(selectedTask!.id, signal),
     enabled: !!selectedTask?.id,
   });
 
@@ -126,45 +126,41 @@ export function ProjectTasks() {
   const handleCloseTemplateManager = useCallback(() => {
     setIsTemplateManagerOpen(false);
   }, []);
+  // Tasks query with safe polling
+  const queryClient = useQueryClient();
+  const {
+    data: queriedTasks = [],
+    isLoading: isTasksLoading,
+  } = useQuery({
+    queryKey: ['tasks', projectId],
+    queryFn: ({ signal }) => tasksApi.getAll(projectId!, signal),
+    enabled: !!projectId,
+    // Gentle polling (5s). React Query dedupes and cleans up automatically.
+    refetchInterval: 5000,
+    refetchIntervalInBackground: false,
+    // Prevent waterfall when projectId flips rapidly
+    placeholderData: (prev) => prev,
+  });
 
-  const fetchTasks = useCallback(
-    async (skipLoading = false) => {
-      try {
-        if (!skipLoading) {
-          setLoading(true);
-        }
-        const result = await tasksApi.getAll(projectId!);
-        // Only update if data has actually changed
-        setTasks((prevTasks) => {
-          const newTasks = result;
-          if (JSON.stringify(prevTasks) === JSON.stringify(newTasks)) {
-            return prevTasks; // Return same reference to prevent re-render
-          }
-
-          setSelectedTask((prev) => {
-            if (!prev) return prev;
-
-            const updatedSelectedTask = newTasks.find(
-              (task) => task.id === prev.id
-            );
-
-            if (JSON.stringify(prev) === JSON.stringify(updatedSelectedTask))
-              return prev;
-            return updatedSelectedTask || prev;
-          });
-
-          return newTasks;
-        });
-      } catch (err) {
-        setError('Failed to load tasks');
-      } finally {
-        if (!skipLoading) {
-          setLoading(false);
-        }
+  // Sync local tasks state (needed for optimistic updates + selection logic)
+  useEffect(() => {
+    setTasks((prevTasks) => {
+      const newTasks = queriedTasks;
+      if (JSON.stringify(prevTasks) === JSON.stringify(newTasks)) {
+        return prevTasks;
       }
-    },
-    [projectId]
-  );
+
+      // Keep selectedTask in sync if present
+      setSelectedTask((prev) => {
+        if (!prev) return prev;
+        const updated = newTasks.find((t) => t.id === prev.id);
+        if (JSON.stringify(prev) === JSON.stringify(updated)) return prev;
+        return updated || prev;
+      });
+
+      return newTasks;
+    });
+  }, [queriedTasks]);
 
   const handleDeleteTask = useCallback(
     async (taskId: string) => {
@@ -172,12 +168,12 @@ export function ProjectTasks() {
 
       try {
         await tasksApi.delete(taskId);
-        await fetchTasks();
+        await queryClient.invalidateQueries({ queryKey: ['tasks', projectId] });
       } catch (error) {
         setError('Failed to delete task');
       }
     },
-    [fetchTasks]
+    [projectId, queryClient]
   );
 
   const handleEditTask = useCallback(
@@ -267,21 +263,12 @@ export function ProjectTasks() {
     onC: handleCreateNewTask,
   });
 
-  // Initialize data when projectId changes
+  // Initialize project data when projectId changes (tasks use React Query)
   useEffect(() => {
     if (projectId) {
       fetchProject();
-      fetchTasks();
-
-      // Set up polling to refresh tasks every 5 seconds
-      const interval = setInterval(() => {
-        fetchTasks(true); // Skip loading spinner for polling
-      }, 2000);
-
-      // Cleanup interval on unmount
-      return () => clearInterval(interval);
     }
-  }, [projectId]);
+  }, [projectId, fetchProject]);
 
   // Handle direct navigation to task URLs
   useEffect(() => {
@@ -295,19 +282,19 @@ export function ProjectTasks() {
         setIsPanelOpen(true);
       } else {
         // Task not found in current array - refetch to get latest data
-        fetchTasks(true);
+        queryClient.invalidateQueries({ queryKey: ['tasks', projectId] });
       }
-    } else if (taskId && tasks.length === 0 && !loading) {
+    } else if (taskId && tasks.length === 0 && !isTasksLoading) {
       // If we have a taskId but no tasks loaded, fetch tasks
-      fetchTasks();
+      queryClient.invalidateQueries({ queryKey: ['tasks', projectId] });
     } else if (!taskId) {
       // Close panel when no taskId in URL
       setIsPanelOpen(false);
       setSelectedTask(null);
     }
-  }, [taskId, tasks, loading, fetchTasks]);
+  }, [taskId, tasks, isTasksLoading, queryClient, projectId]);
 
-  if (loading) {
+  if (isTasksLoading) {
     return <Loader message="Loading tasks..." size={32} className="py-8" />;
   }
 
