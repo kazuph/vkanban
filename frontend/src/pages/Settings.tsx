@@ -1,4 +1,5 @@
 import { useCallback, useState, useEffect } from 'react';
+import { useQuery, useMutation } from '@tanstack/react-query';
 import {
   Card,
   CardContent,
@@ -64,23 +65,27 @@ export function Settings() {
   const [profilesSaving, setProfilesSaving] = useState(false);
   const [profilesSuccess, setProfilesSuccess] = useState(false);
 
-  // Load profiles content on mount
+  // Load profiles content via Query
+  const profilesQuery = useQuery({
+    queryKey: ['profiles-file'],
+    queryFn: () => profilesApi.load(),
+    staleTime: 60_000,
+  });
+
   useEffect(() => {
-    const loadProfiles = async () => {
-      setProfilesLoading(true);
-      try {
-        const result = await profilesApi.load();
-        setProfilesContent(result.content);
-        setProfilesPath(result.path);
-      } catch (err) {
-        console.error('Failed to load profiles:', err);
-        setProfilesError('Failed to load profiles');
-      } finally {
-        setProfilesLoading(false);
-      }
-    };
-    loadProfiles();
-  }, []);
+    setProfilesLoading(profilesQuery.isLoading);
+    if (profilesQuery.data) {
+      setProfilesContent(profilesQuery.data.content);
+      setProfilesPath(profilesQuery.data.path);
+    }
+    if (profilesQuery.isError) {
+      setProfilesError('Failed to load profiles');
+    }
+  }, [
+    profilesQuery.isLoading,
+    profilesQuery.isError,
+    profilesQuery.data,
+  ]);
 
   const playSound = async (soundFile: SoundFile) => {
     const audio = new Audio(`/api/sounds/${soundFile}`);
@@ -113,22 +118,26 @@ export function Settings() {
     }
   };
 
+  const saveProfilesMutation = useMutation({
+    mutationFn: () => profilesApi.save(profilesContent),
+    onSuccess: async () => {
+      await reloadSystem();
+      setProfilesSuccess(true);
+      setTimeout(() => setProfilesSuccess(false), 3000);
+    },
+    onError: (err: any) => {
+      setProfilesError(err.message || 'Failed to save profiles');
+    },
+    onSettled: () => setProfilesSaving(false),
+  });
+
   const handleSaveProfiles = async () => {
     setProfilesSaving(true);
     setProfilesError(null);
     setProfilesSuccess(false);
-
     try {
-      await profilesApi.save(profilesContent);
-      // Reload the system to get the updated profiles
-      await reloadSystem();
-      setProfilesSuccess(true);
-      setTimeout(() => setProfilesSuccess(false), 3000);
-    } catch (err: any) {
-      setProfilesError(err.message || 'Failed to save profiles');
-    } finally {
-      setProfilesSaving(false);
-    }
+      await saveProfilesMutation.mutateAsync();
+    } catch {}
   };
 
   const handleSave = async () => {

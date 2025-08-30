@@ -34,8 +34,16 @@ Sentry.setTag('source', 'frontend');
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      staleTime: 1000 * 60 * 5, // 5 minutes
+      staleTime: 5_000,
+      gcTime: 5 * 60_000,
       refetchOnWindowFocus: false,
+      refetchOnReconnect: true,
+      // Only retry network errors or 5xx, and keep it low to avoid bursts
+      retry(failureCount, error: any) {
+        const status = error?.status ?? error?.response?.status;
+        const is4xx = status && status >= 400 && status < 500;
+        return !is4xx && failureCount < 2;
+      },
     },
   },
 });
