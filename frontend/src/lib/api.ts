@@ -542,25 +542,26 @@ export const githubApi = {
 
 // Task Templates APIs
 export const templatesApi = {
-  list: async (): Promise<TaskTemplate[]> => {
-    const response = await makeRequest('/api/templates');
+  list: async (signal?: AbortSignal): Promise<TaskTemplate[]> => {
+    const response = await makeRequest('/api/templates', { signal });
     return handleApiResponse<TaskTemplate[]>(response);
   },
 
-  listGlobal: async (): Promise<TaskTemplate[]> => {
-    const response = await makeRequest('/api/templates?global=true');
+  listGlobal: async (signal?: AbortSignal): Promise<TaskTemplate[]> => {
+    const response = await makeRequest('/api/templates?global=true', { signal });
     return handleApiResponse<TaskTemplate[]>(response);
   },
 
-  listByProject: async (projectId: string): Promise<TaskTemplate[]> => {
+  listByProject: async (projectId: string, signal?: AbortSignal): Promise<TaskTemplate[]> => {
     const response = await makeRequest(
-      `/api/templates?project_id=${projectId}`
+      `/api/templates?project_id=${projectId}`,
+      { signal }
     );
     return handleApiResponse<TaskTemplate[]>(response);
   },
 
-  get: async (templateId: string): Promise<TaskTemplate> => {
-    const response = await makeRequest(`/api/templates/${templateId}`);
+  get: async (templateId: string, signal?: AbortSignal): Promise<TaskTemplate> => {
+    const response = await makeRequest(`/api/templates/${templateId}`, { signal });
     return handleApiResponse<TaskTemplate>(response);
   },
 
@@ -674,8 +675,8 @@ export const imagesApi = {
     return handleApiResponse<void>(response);
   },
 
-  getTaskImages: async (taskId: string): Promise<ImageResponse[]> => {
-    const response = await makeRequest(`/api/images/task/${taskId}`);
+  getTaskImages: async (taskId: string, signal?: AbortSignal): Promise<ImageResponse[]> => {
+    const response = await makeRequest(`/api/images/task/${taskId}`, { signal });
     return handleApiResponse<ImageResponse[]>(response);
   },
 
