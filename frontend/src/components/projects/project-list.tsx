@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   useKanbanKeyboardNavigation,
@@ -10,38 +10,28 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Project } from 'shared/types';
 import { ProjectForm } from './project-form';
 import { projectsApi } from '@/lib/api';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertCircle, Loader2, Plus } from 'lucide-react';
 import ProjectCard from '@/components/projects/ProjectCard.tsx';
 
 export function ProjectList() {
   const navigate = useNavigate();
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [loading, setLoading] = useState(false);
+  const queryClient = useQueryClient();
+  const { data: projects = [], isLoading, isError } = useQuery({
+    queryKey: ['projects'],
+    queryFn: ({ signal }) => projectsApi.getAll(signal),
+    staleTime: 10_000,
+  });
   const [showForm, setShowForm] = useState(false);
   const [editingProject, setEditingProject] = useState<Project | null>(null);
   const [error, setError] = useState('');
   const [focusedProjectId, setFocusedProjectId] = useState<string | null>(null);
   const [focusedColumn, setFocusedColumn] = useState<string | null>(null);
 
-  const fetchProjects = async () => {
-    setLoading(true);
-    setError('');
-
-    try {
-      const result = await projectsApi.getAll();
-      setProjects(result);
-    } catch (error) {
-      console.error('Failed to fetch projects:', error);
-      setError('Failed to fetch projects');
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const handleFormSuccess = () => {
     setShowForm(false);
     setEditingProject(null);
-    fetchProjects();
+    queryClient.invalidateQueries({ queryKey: ['projects'] });
   };
 
   // Group projects by grid columns (3 columns for lg, 2 for md, 1 for sm)
@@ -123,9 +113,7 @@ export function ProjectList() {
     return () => window.removeEventListener('resize', handleResize);
   }, [focusedProjectId, projects]);
 
-  useEffect(() => {
-    fetchProjects();
-  }, []);
+  // Initial load handled by useQuery
 
   return (
     <div className="space-y-6 p-8 h-full">
@@ -149,7 +137,7 @@ export function ProjectList() {
         </Alert>
       )}
 
-      {loading ? (
+      {isLoading ? (
         <div className="flex items-center justify-center py-12">
           <Loader2 className="mr-2 h-4 w-4 animate-spin" />
           Loading projects...
@@ -180,7 +168,6 @@ export function ProjectList() {
               setError={setError}
               setEditingProject={setEditingProject}
               setShowForm={setShowForm}
-              fetchProjects={fetchProjects}
             />
           ))}
         </div>
