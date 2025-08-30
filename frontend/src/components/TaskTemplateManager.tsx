@@ -12,6 +12,7 @@ import {
 } from '@/components/ui/dialog';
 import { Plus, Edit2, Trash2, Loader2 } from 'lucide-react';
 import { templatesApi } from '@/lib/api';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import type {
   TaskTemplate,
   CreateTaskTemplate,
@@ -27,6 +28,7 @@ export function TaskTemplateManager({
   projectId,
   isGlobal = false,
 }: TaskTemplateManagerProps) {
+  const queryClient = useQueryClient();
   const [templates, setTemplates] = useState<TaskTemplate[]>([]);
   const [loading, setLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -41,33 +43,41 @@ export function TaskTemplateManager({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchTemplates = useCallback(async () => {
-    setLoading(true);
-    try {
-      const data = isGlobal
-        ? await templatesApi.listGlobal()
-        : projectId
-          ? await templatesApi.listByProject(projectId)
-          : [];
+  // Query templates for this view
+  const projectTemplatesQuery = useQuery({
+    queryKey: ['templates', 'project', projectId ?? 'none'],
+    queryFn: ({ signal }) =>
+      projectId ? templatesApi.listByProject(projectId, signal) : Promise.resolve([]),
+    enabled: !!projectId && !isGlobal,
+    staleTime: 30_000,
+  });
 
-      // Filter to show only templates for this specific scope
-      const filtered = data.filter((template) =>
-        isGlobal
-          ? template.project_id === null
-          : template.project_id === projectId
-      );
-
-      setTemplates(filtered);
-    } catch (err) {
-      console.error('Failed to fetch templates:', err);
-    } finally {
-      setLoading(false);
-    }
-  }, [isGlobal, projectId]);
+  const globalTemplatesQuery = useQuery({
+    queryKey: ['templates', 'global'],
+    queryFn: ({ signal }) => templatesApi.listGlobal(signal),
+    enabled: isGlobal || !projectId ? true : false,
+    staleTime: 30_000,
+  });
 
   useEffect(() => {
-    fetchTemplates();
-  }, [fetchTemplates]);
+    setLoading(projectTemplatesQuery.isLoading || globalTemplatesQuery.isLoading);
+    const list: TaskTemplate[] = [];
+    if (!isGlobal && projectTemplatesQuery.data) list.push(...projectTemplatesQuery.data);
+    if (isGlobal && globalTemplatesQuery.data) list.push(...globalTemplatesQuery.data);
+    if (!isGlobal && globalTemplatesQuery.data) list.push(...globalTemplatesQuery.data);
+    if (list.length || (!projectTemplatesQuery.isLoading && !globalTemplatesQuery.isLoading)) {
+      // Filter to scope
+      const filtered = list.filter((t) => (isGlobal ? t.project_id === null : t.project_id === projectId));
+      setTemplates(filtered);
+    }
+  }, [
+    isGlobal,
+    projectId,
+    projectTemplatesQuery.isLoading,
+    globalTemplatesQuery.isLoading,
+    projectTemplatesQuery.data,
+    globalTemplatesQuery.data,
+  ]);
 
   const handleOpenDialog = useCallback((template?: TaskTemplate) => {
     if (template) {
@@ -100,6 +110,41 @@ export function TaskTemplateManager({
     setError(null);
   }, []);
 
+  const createMutation = useMutation({
+    mutationFn: (createData: CreateTaskTemplate) => templatesApi.create(createData),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['templates'] });
+    },
+  });
+
+  // Helper to refresh templates queries
+  const fetchTemplates = useCallback(async () => {
+    await Promise.all([
+      queryClient.invalidateQueries({
+        queryKey: ['templates', 'project', projectId ?? 'none'],
+      }),
+      queryClient.invalidateQueries({
+        queryKey: ['templates', 'global'],
+      }),
+      queryClient.invalidateQueries({ queryKey: ['templates'] }),
+    ]);
+  }, [queryClient, projectId]);
+
+  const updateMutation = useMutation({
+    mutationFn: ({ id, update }: { id: string; update: UpdateTaskTemplate }) =>
+      templatesApi.update(id, update),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['templates'] });
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => templatesApi.delete(id),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['templates'] });
+    },
+  });
+
   const handleSave = useCallback(async () => {
     if (!formData.template_name.trim() || !formData.title.trim()) {
       setError('Template name and title are required');
@@ -116,7 +161,7 @@ export function TaskTemplateManager({
           title: formData.title,
           description: formData.description || null,
         };
-        await templatesApi.update(editingTemplate.id, updateData);
+        await updateMutation.mutateAsync({ id: editingTemplate.id, update: updateData });
       } else {
         const createData: CreateTaskTemplate = {
           project_id: isGlobal ? null : projectId || null,
@@ -124,7 +169,7 @@ export function TaskTemplateManager({
           title: formData.title,
           description: formData.description || null,
         };
-        await templatesApi.create(createData);
+        await createMutation.mutateAsync(createData);
       }
       await fetchTemplates();
       handleCloseDialog();
@@ -171,13 +216,12 @@ export function TaskTemplateManager({
       }
 
       try {
-        await templatesApi.delete(template.id);
-        await fetchTemplates();
+        await deleteMutation.mutateAsync(template.id);
       } catch (err) {
         console.error('Failed to delete template:', err);
       }
     },
-    [fetchTemplates]
+    [deleteMutation]
   );
 
   if (loading) {
