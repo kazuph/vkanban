@@ -15,6 +15,15 @@ import { useOpenInEditor } from '@/hooks/useOpenInEditor';
 import { useDiffSummary } from '@/hooks/useDiffSummary';
 import { useCreatePRDialog } from '@/contexts/create-pr-dialog-context';
 import { useBranchStatus } from '@/hooks';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '../ui/dialog';
+import { useState } from 'react';
 
 interface AttemptHeaderCardProps {
   attemptNumber: number;
@@ -48,6 +57,11 @@ export function AttemptHeaderCard({
   );
   const { showCreatePRDialog } = useCreatePRDialog();
   const { data: branchStatus } = useBranchStatus(selectedAttempt?.id);
+
+  const [showMergeConfirmation, setShowMergeConfirmation] = useState(false);
+  const [merging, setMerging] = useState(false);
+  const [showRebaseConfirmation, setShowRebaseConfirmation] = useState(false);
+  const [rebasing, setRebasing] = useState(false);
 
   const handleCreatePR = () => {
     if (selectedAttempt) {
@@ -124,7 +138,7 @@ export function AttemptHeaderCard({
             {runningDevServer ? 'Stop dev server' : 'Start dev server'}
           </DropdownMenuItem>
           <DropdownMenuItem
-            onClick={() => rebaseMutation.mutate(undefined)}
+            onClick={() => setShowRebaseConfirmation(true)}
             disabled={!selectedAttempt}
           >
             Rebase
@@ -145,7 +159,7 @@ export function AttemptHeaderCard({
             </DropdownMenuItem>
           )}
           <DropdownMenuItem
-            onClick={() => mergeMutation.mutate()}
+            onClick={() => setShowMergeConfirmation(true)}
             disabled={!selectedAttempt}
           >
             Merge
@@ -158,6 +172,96 @@ export function AttemptHeaderCard({
           </DropdownMenuItem> */}
         </DropdownMenuContent>
       </DropdownMenu>
+
+      {/* Merge Confirmation Dialog */}
+      <Dialog open={showMergeConfirmation} onOpenChange={setShowMergeConfirmation}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Merge Changes?</DialogTitle>
+            <DialogDescription>
+              Squash-merge turns all commits from the attempt branch
+              {selectedAttempt?.branch ? ` (${selectedAttempt.branch})` : ''}
+              {branchStatus?.base_branch_name ? ` into ${branchStatus.base_branch_name}` : ''}
+              into a single commit on the base branch to keep history linear.
+              No changes are pushed to remote automatically. You can push after
+              it succeeds. This action cannot be undone from the app.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setShowMergeConfirmation(false)}
+              disabled={merging}
+            >
+              Cancel
+            </Button>
+            <Button
+              className="bg-green-600 hover:bg-green-700"
+              onClick={async () => {
+                try {
+                  setMerging(true);
+                  setShowMergeConfirmation(false);
+                  await mergeMutation.mutateAsync();
+                } catch (err) {
+                  console.error('Failed to merge:', err);
+                } finally {
+                  setMerging(false);
+                }
+              }}
+              disabled={merging}
+            >
+              {merging ? 'Merging...' : 'Merge'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Rebase Confirmation Dialog */}
+      <Dialog
+        open={showRebaseConfirmation}
+        onOpenChange={setShowRebaseConfirmation}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Rebase Branch?</DialogTitle>
+            <DialogDescription>
+              Rebase will replay the attempt branch’s commits on top of the
+              latest base branch
+              {branchStatus?.base_branch_name ? ` (${branchStatus.base_branch_name})` : ''},
+              rewriting history (commit SHAs change). You may need to resolve
+              conflicts. No changes are pushed to remote automatically; if this
+              branch was pushed before, you’ll likely need to push with
+              force-with-lease after rebasing. This action cannot be undone from
+              the app.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setShowRebaseConfirmation(false)}
+              disabled={rebasing}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={async () => {
+                try {
+                  setRebasing(true);
+                  setShowRebaseConfirmation(false);
+                  await rebaseMutation.mutateAsync(undefined);
+                } catch (err) {
+                  console.error('Failed to rebase:', err);
+                } finally {
+                  setRebasing(false);
+                }
+              }}
+              disabled={rebasing}
+            >
+              {rebasing ? 'Rebasing...' : 'Rebase'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Card>
   );
 }
