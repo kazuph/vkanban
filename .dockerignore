@@ -1,0 +1,26 @@
+# General
+.git
+.gitignore
+.DS_Store
+*.log
+node_modules
+**/node_modules
+target
+**/target
+
+# Local caches and artifacts
+.playwright-browsers
+.pnpm-store
+test-results
+project.worktree
+var_tmp_vkanban
+data
+
+# Frontend build output (we build inside the image)
+frontend/dist
+
+# VCS / IDE
+.idea
+.vscode
+.history
+.swp

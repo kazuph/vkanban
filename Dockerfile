@@ -1,37 +1,90 @@
-FROM node:18-alpine
+# syntax=docker/dockerfile:1.7-labs
 
-# Install Rust and dependencies
-RUN apk add --no-cache curl build-base perl tini
-RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-ENV PATH="/root/.cargo/bin:${PATH}"
+# ---------- Build args (override at build time if needed) ----------
+ARG NODE_VERSION=22
+ARG RUST_VERSION=1.82
+ARG PNPM_VERSION=9
 
-# Set working directory
+# ---------- Frontend: deps ----------
+FROM node:${NODE_VERSION}-bookworm AS frontend-deps
 WORKDIR /app
+ENV PNPM_HOME=/root/.local/share/pnpm \
+    PATH="/root/.local/share/pnpm:${PATH}"
+RUN corepack enable && corepack prepare pnpm@${PNPM_VERSION} --activate
 
-# Copy package files first for dependency caching
-COPY package*.json pnpm-lock.yaml pnpm-workspace.yaml ./
-COPY frontend/package*.json ./frontend/
-COPY npx-cli/package*.json ./npx-cli/
+# Copy only manifests for better layer caching
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY frontend/package.json ./frontend/
+COPY npx-cli/package.json ./npx-cli/
 
-# Install pnpm and dependencies (cached if package files unchanged)
-RUN npm install -g pnpm
-RUN pnpm install
+# Install dependencies using cache mounts (fast, reproducible)
+RUN --mount=type=cache,target=/root/.local/share/pnpm/store \
+    pnpm install --frozen-lockfile
 
+# ---------- Frontend: build ----------
+FROM frontend-deps AS frontend-build
 COPY frontend/ ./frontend/
 COPY shared/ ./shared/
-RUN cd frontend && npm run build
+RUN --mount=type=cache,target=/root/.local/share/pnpm/store \
+    pnpm --filter frontend... build
 
-# Copy Rust dependencies for cargo cache
-COPY backend/ ./backend/
+# ---------- Backend: base ----------
+FROM rust:${RUST_VERSION}-bookworm AS backend-base
+WORKDIR /app
+ENV CARGO_REGISTRIES_CRATES_IO_PROTOCOL=sparse \
+    CARGO_TERM_COLOR=always \
+    # Lower memory pressure for large deps (octocrab/hyper/rustls)
+    RUSTFLAGS="-C debuginfo=0 -C opt-level=2 -C codegen-units=32 -C lto=off"
+
+# System deps for compiling Rust crates
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
+    apt-get update && apt-get install -y --no-install-recommends \
+      pkg-config build-essential ca-certificates git clang lld \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install nightly toolchain for edition 2024 crates
+RUN rustup toolchain install nightly -c rustc,cargo,rust-std --profile minimal
+
+# ---------- Backend: build ----------
+FROM backend-base AS backend-build
+# Copy manifests first (best-effort cache) then fetch deps
 COPY Cargo.toml ./
-RUN cargo build --release --manifest-path backend/Cargo.toml
+COPY crates ./crates
+COPY assets ./assets
 
-# Expose port
-ENV HOST=0.0.0.0
-ENV PORT=3000
-EXPOSE 3000
+# Bring in built frontend assets for rust-embed
+COPY --from=frontend-build /app/frontend/dist ./frontend/dist
 
-# Run the application
-WORKDIR /repos
-ENTRYPOINT ["/sbin/tini", "--"]
-CMD ["/app/target/release/vibe-kanban"]
+# Build with cache mounts (registry + target). Limit parallelism to reduce memory.
+ENV SQLX_OFFLINE=true
+RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
+    --mount=type=cache,target=/app/target,sharing=locked \
+    cargo +nightly build -p server --release -j 1
+
+# ---------- Runtime ----------
+FROM debian:bookworm-slim AS runtime
+WORKDIR /app
+
+LABEL org.opencontainers.image.title="vkanban" \
+      org.opencontainers.image.description="Vibe Kanban server with embedded frontend" \
+      org.opencontainers.image.source="https://github.com/kazuph/vkanban" \
+      org.opencontainers.image.licenses="Apache-2.0"
+
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
+    apt-get update && apt-get install -y --no-install-recommends \
+      ca-certificates tini git \
+    && rm -rf /var/lib/apt/lists/*
+
+# Runtime defaults (overridable)
+ENV VIBE_KANBAN_ASSET_MODE=prod \
+    HOST=0.0.0.0 \
+    PORT=8080
+
+# Copy compiled binary only
+COPY --from=backend-build /app/target/release/server /usr/local/bin/vibe-kanban
+
+EXPOSE 8080
+ENTRYPOINT ["/usr/bin/tini", "--"]
+CMD ["vibe-kanban"]

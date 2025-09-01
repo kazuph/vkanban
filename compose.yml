@@ -1,0 +1,22 @@
+services:
+  vkanban:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        NODE_VERSION: 20
+        RUST_VERSION: 1.79
+        PNPM_VERSION: 9
+    image: vkanban:dev
+    ports:
+      - "8080:8080"
+    environment:
+      - HOST=0.0.0.0
+      - PORT=8080
+      - VIBE_KANBAN_ASSET_MODE=prod
+      - VIBE_KANBAN_ASSET_DIR=/data
+    volumes:
+      - ./data:/data
+      # Persist worktrees and temp files used by the app (Linux path inside container)
+      - ./var_tmp_vkanban:/var/tmp/vibe-kanban
+    restart: unless-stopped
