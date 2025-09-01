@@ -29,6 +29,8 @@ import TaskKanbanBoard from '@/components/tasks/TaskKanbanBoard';
 import { TaskDetailsPanel } from '@/components/tasks/TaskDetailsPanel';
 import type { TaskWithAttemptStatus, Project, TaskAttempt } from 'shared/types';
 import type { DragEndEvent } from '@/components/ui/shadcn-io/kanban';
+import { Breadcrumb } from '@/components/ui/breadcrumb';
+import { Link } from 'react-router-dom';
 
 type Task = TaskWithAttemptStatus;
 
@@ -303,11 +305,41 @@ export function ProjectTasks() {
   }
 
   return (
-    <div
-      className={`min-h-full ${getMainContainerClasses(isPanelOpen, isFullscreen)}`}
-    >
-      {/* Left Column - Kanban Section */}
-      <div className={getKanbanSectionClasses(isPanelOpen, isFullscreen)}>
+    <div className={"h-full flex flex-col"}>
+      {!isFullscreen && (
+        <div className="w-full border-b bg-background/60 backdrop-blur supports-[backdrop-filter]:bg-background/40">
+          <div className="w-full px-3 sm:px-4 py-2">
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+              <Breadcrumb
+                className="flex-1 min-w-0"
+                items={[
+                  { label: 'Projects', to: '/projects' },
+                  project
+                    ? { label: project.name, to: `/projects/${projectId}` }
+                    : { label: '...' },
+                  { label: 'Tasks' },
+                  selectedTask ? { label: selectedTask.title } : undefined,
+                ].filter(Boolean) as any}
+              />
+              <div className="flex items-center gap-2">
+                <Button size="sm" variant="secondary" asChild>
+                  <Link to={`/projects/${projectId}`}>Project Settings</Link>
+                </Button>
+                <Button size="sm" onClick={handleCreateNewTask}>
+                  <Plus className="h-4 w-4 mr-2" /> New Task
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Main area: takes remaining height below header */}
+      <div className={`flex-1 min-h-0 ${getMainContainerClasses(
+        isPanelOpen,
+        isFullscreen
+      )}`}>
+        {/* Left Column - Kanban Section */}
+        <div className={getKanbanSectionClasses(isPanelOpen, isFullscreen)}>
         {tasks.length === 0 ? (
           <div className="max-w-7xl mx-auto mt-8">
             <Card>
@@ -336,33 +368,34 @@ export function ProjectTasks() {
             />
           </div>
         )}
-      </div>
+        </div>
 
-      {/* Right Column - Task Details Panel */}
-      {isPanelOpen && (
-        <TaskDetailsPanel
-          task={selectedTask}
-          projectHasDevScript={!!project?.dev_script}
-          projectId={projectId!}
-          onClose={handleClosePanel}
-          onEditTask={handleEditTask}
-          onDeleteTask={handleDeleteTask}
-          isDialogOpen={isProjectSettingsOpen}
-          isFullScreen={isFullscreen}
-          setFullScreen={
-            selectedAttempt
-              ? (fullscreen) => {
-                  const baseUrl = `/projects/${projectId}/tasks/${selectedTask!.id}/attempts/${selectedAttempt.id}`;
-                  const fullUrl = fullscreen ? `${baseUrl}/full` : baseUrl;
-                  navigate(fullUrl, { replace: true });
-                }
-              : undefined
-          }
-          selectedAttempt={selectedAttempt}
-          attempts={attempts}
-          setSelectedAttempt={setSelectedAttempt}
-        />
-      )}
+        {/* Right Column - Task Details Panel */}
+        {isPanelOpen && (
+          <TaskDetailsPanel
+            task={selectedTask}
+            projectHasDevScript={!!project?.dev_script}
+            projectId={projectId!}
+            onClose={handleClosePanel}
+            onEditTask={handleEditTask}
+            onDeleteTask={handleDeleteTask}
+            isDialogOpen={isProjectSettingsOpen}
+            isFullScreen={isFullscreen}
+            setFullScreen={
+              selectedAttempt
+                ? (fullscreen) => {
+                    const baseUrl = `/projects/${projectId}/tasks/${selectedTask!.id}/attempts/${selectedAttempt.id}`;
+                    const fullUrl = fullscreen ? `${baseUrl}/full` : baseUrl;
+                    navigate(fullUrl, { replace: true });
+                  }
+                : undefined
+            }
+            selectedAttempt={selectedAttempt}
+            attempts={attempts}
+            setSelectedAttempt={setSelectedAttempt}
+          />
+        )}
+      </div>
 
       {/* Dialogs - rendered at main container level to avoid stacking issues */}
 

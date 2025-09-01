@@ -59,22 +59,37 @@ export function Navbar() {
 
   return (
     <div className="border-b bg-background">
-      <div className="w-full px-3">
-        <div className="flex items-center h-12 py-2">
+      <div className="w-full px-3 sm:px-4">
+        <div className="flex items-center h-12 pt-3 pb-2">
           <div className="flex-1">
             <Link to="/projects">
               <Logo />
             </Link>
           </div>
 
-          <SearchBar
-            className="hidden sm:flex"
-            value={query}
-            onChange={setQuery}
-            disabled={!active}
-            onClear={clear}
-            project={project || null}
-          />
+          {/* Current project indicator + search */}
+          <div className="flex items-center gap-3 max-w-[50%]">
+            {projectId && project && (
+              <Link
+                to={`/projects/${projectId}`}
+                className="hidden sm:flex items-center gap-2 text-sm text-muted-foreground max-w-xs truncate"
+                title={project.git_repo_path}
+                aria-label={`Current project: ${project.name}`}
+              >
+                <FolderOpen className="h-4 w-4" />
+                <span className="truncate">{project.name}</span>
+              </Link>
+            )}
+
+            <SearchBar
+              className="hidden sm:flex"
+              value={query}
+              onChange={setQuery}
+              disabled={!active}
+              onClear={clear}
+              project={project || null}
+            />
+          </div>
 
           <div className="flex-1 flex justify-end">
             {projectId && (

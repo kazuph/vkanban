@@ -503,16 +503,39 @@ export function Settings() {
                 </p>
               </div>
               {config && isAuthenticated ? (
-                <div className="flex items-center justify-between gap-4">
-                  <div>
-                    <Label>Signed in as</Label>
-                    <div className="text-lg font-mono">
-                      {config.github.username}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between gap-4">
+                    <div>
+                      <Label>Signed in as</Label>
+                      <div className="text-lg font-mono">
+                        {config.github.username}
+                      </div>
                     </div>
+                    <Button variant="outline" onClick={handleLogout}>
+                      Log out
+                    </Button>
                   </div>
-                  <Button variant="outline" onClick={handleLogout}>
-                    Log out
-                  </Button>
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      variant="default"
+                      onClick={() => setShowGitHubLogin(true)}
+                    >
+                      Grant additional permissions
+                    </Button>
+                    <Button asChild variant="outline">
+                      <a
+                        href="https://github.com/settings/connections/applications"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        Manage on GitHub
+                      </a>
+                    </Button>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    追加の権限が必要になった場合、上の「Grant additional permissions」から再認証できます。
+                    「Manage on GitHub」では接続済みアプリの権限や組織アクセスを確認・変更できます。
+                  </p>
                 </div>
               ) : (
                 <Button onClick={() => setShowGitHubLogin(true)}>

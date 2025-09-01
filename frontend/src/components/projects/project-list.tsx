@@ -116,7 +116,8 @@ export function ProjectList() {
   // Initial load handled by useQuery
 
   return (
-    <div className="space-y-6 p-8 h-full">
+    // Align left padding with the navbar (px-3 sm:px-4)
+    <div className="space-y-6 px-3 sm:px-4 py-8 h-full">
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Projects</h1>

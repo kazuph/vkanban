@@ -42,6 +42,13 @@ export function GitHubLoginDialog({
       const data = await githubAuthApi.start();
       setDeviceState(data);
       setPolling(true);
+      // 1) 端末コードは後続の useEffect で自動コピー
+      // 2) ユーザー操作発端の同期コンテキストで新規タブを開く（ポップアップブロック回避）
+      try {
+        window.open(data.verification_uri, '_blank', 'noopener,noreferrer');
+      } catch (_) {
+        // 失敗してもUI上のリンク/ボタンから開けるので無視
+      }
     } catch (e: any) {
       console.error(e);
       setError(e?.message || 'Network error');
@@ -189,6 +196,21 @@ export function GitHubLoginDialog({
                     >
                       {deviceState.verification_uri}
                     </a>
+                    <div className="mt-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() =>
+                          window.open(
+                            deviceState.verification_uri,
+                            '_blank',
+                            'noopener,noreferrer'
+                          )
+                        }
+                      >
+                        Open authorization page
+                      </Button>
+                    </div>
                   </div>
                 </div>
 

@@ -220,7 +220,9 @@ export function TaskDetailsPanel({
                           onJumpToDiffFullScreen={jumpToDiffFullScreen}
                         />
 
-                        <LogsTab selectedAttempt={selectedAttempt} />
+                        <div className="flex-1 min-h-0">
+                          <LogsTab selectedAttempt={selectedAttempt} />
+                        </div>
 
                         <TaskFollowUpSection
                           task={task}

@@ -35,7 +35,7 @@ export const getTaskPanelClasses = (forceFullScreen: boolean) => {
     : [
         `${PANEL_SIDE_BY_SIDE_BREAKPOINT}:relative`,
         `${PANEL_SIDE_BY_SIDE_BREAKPOINT}:inset-auto`,
-        `${PANEL_SIDE_BY_SIDE_BREAKPOINT}:z-auto`,
+        `${PANEL_SIDE_BY_SIDE_BREAKPOINT}:z-30`,
         `${PANEL_SIDE_BY_SIDE_BREAKPOINT}:h-full`,
         `${PANEL_SIDE_BY_SIDE_BREAKPOINT}:w-[800px]`,
       ].join(' ');
@@ -57,12 +57,11 @@ export const getMainContainerClasses = (
   isPanelOpen: boolean,
   forceFullScreen: boolean
 ) => {
-  const overlayClasses =
-    isPanelOpen && forceFullScreen
-      ? 'w-full h-full'
-      : `h-full ${PANEL_SIDE_BY_SIDE_BREAKPOINT}:flex`;
-
-  return `${overlayClasses}`;
+  // Make the main container explicitly take the available height so
+  // children that rely on 100% heights (e.g., Virtuoso) can size correctly
+  // at wider breakpoints.
+  const base = isPanelOpen && forceFullScreen ? 'w-full h-full' : `${PANEL_SIDE_BY_SIDE_BREAKPOINT}:flex`;
+  return `h-full min-h-0 ${base}`;
 };
 
 // Generate classes for kanban section
@@ -70,7 +69,8 @@ export const getKanbanSectionClasses = (
   isPanelOpen: boolean,
   forceFullScreen: boolean
 ) => {
-  const baseClasses = 'h-full w-full';
+  // Avoid h-full so the board height accounts for header above.
+  const baseClasses = 'min-h-0 w-full';
 
   if (!isPanelOpen) return baseClasses;
 

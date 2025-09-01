@@ -306,6 +306,19 @@
     --_console-success: 135 94% 65%;
     --_console-error: 0 100% 67%;
   }
+
+  /* Monochrome logo mask uses theme foreground color */
+  .logo-monochrome {
+    background-color: hsl(var(--foreground));
+    -webkit-mask-image: url('/vkanban-logo.png');
+    mask-image: url('/vkanban-logo.png');
+    -webkit-mask-repeat: no-repeat;
+    mask-repeat: no-repeat;
+    -webkit-mask-size: contain;
+    mask-size: contain;
+    -webkit-mask-position: left center;
+    mask-position: left center;
+  }
 }
 
 /* 2) PUBLIC TOKENS: prefer VS Code, else fall back to theme tokens */

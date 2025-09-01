@@ -79,7 +79,7 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             config_version: "v5".to_string(),
-            theme: ThemeMode::System,
+            theme: ThemeMode::SolarizedLight,
             profile: ProfileVariantLabel::default("claude-code".to_string()),
             disclaimer_acknowledged: false,
             onboarding_acknowledged: false,

@@ -179,7 +179,7 @@ function AppContent() {
   }
 
   return (
-    <ThemeProvider initialTheme={config?.theme || ThemeMode.SYSTEM}>
+    <ThemeProvider initialTheme={config?.theme || ThemeMode.SOLARIZED_LIGHT}>
       <AppWithStyleOverride>
         <SearchProvider>
           <div className="h-screen flex flex-col bg-background">

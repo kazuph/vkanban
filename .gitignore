@@ -86,3 +86,6 @@ vibe-kanban-cloud/
 # Local worktrees and caches
 project.worktree/
 frontend/.npm-cache/
+.playwright-browsers/
+test-results/
+.pnpm-store/

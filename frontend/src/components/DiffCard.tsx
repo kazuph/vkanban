@@ -47,7 +47,9 @@ export default function DiffCard({
   selectedAttempt,
 }: Props) {
   const { config } = useConfig();
-  const theme = isDarkTheme(config?.theme || ThemeMode.SYSTEM) ? 'dark' : 'light';
+  const theme = isDarkTheme(config?.theme || ThemeMode.SOLARIZED_LIGHT)
+    ? 'dark'
+    : 'light';
 
   const oldName = diff.oldPath || undefined;
   const newName = diff.newPath || oldName || 'unknown';
