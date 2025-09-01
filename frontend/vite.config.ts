@@ -37,9 +37,27 @@ export default defineConfig({
 
   server: {
     port: parseInt(process.env.FRONTEND_PORT || '3000'),
+    // Allow access via Tailscale and other non-localhost hosts.
+    // Security note: keep this list tight for dev convenience; expand via env when needed.
+    // Docs: https://vite.dev/config/server-options#server-allowedhosts
+    allowedHosts: (() => {
+      // Prefer explicit env configuration: comma separated hostnames or patterns (e.g. ".ts.net")
+      const envList =
+        process.env.VITE_ALLOWED_HOSTS ||
+        process.env.__VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS;
+      if (envList && envList.trim()) {
+        return envList
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean);
+      }
+      // As a sensible default, allow Tailscale MagicDNS domains.
+      // IP アドレスはデフォルトで許可されるため、ここではホスト名のみ追加します。
+      return ['.ts.net'];
+    })(),
     // Make HMR explicit to avoid IPv6/host inference issues
     hmr: {
-      host: 'localhost',
+      host: process.env.HMR_HOST || 'localhost',
       protocol: 'ws',
       clientPort: parseInt(process.env.FRONTEND_PORT || '3000'),
     },
