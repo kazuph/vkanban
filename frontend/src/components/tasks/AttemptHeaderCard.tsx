@@ -131,7 +131,9 @@ export function AttemptHeaderCard({
             Open in IDE
           </DropdownMenuItem>
           <DropdownMenuItem
-            onClick={runningDevServer ? stopDevServer : startDevServer}
+            onClick={() =>
+              runningDevServer ? stopDevServer() : startDevServer()
+            }
             disabled={!selectedAttempt}
             className={runningDevServer ? 'text-destructive' : ''}
           >
