@@ -19,4 +19,6 @@ services:
       - ./data:/data
       # Persist worktrees and temp files used by the app (Linux path inside container)
       - ./var_tmp_vkanban:/var/tmp/vibe-kanban
-    restart: unless-stopped
+      # Map host repo so that project path "kazuph/vkanban" resolves under /repos
+      - /home/kazuph/src/github.com/kazuph/vkanban:/repos/kazuph/vkanban
+    restart: always

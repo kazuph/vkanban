@@ -25,8 +25,9 @@ RUN --mount=type=cache,target=/root/.local/share/pnpm/store \
 FROM frontend-deps AS frontend-build
 COPY frontend/ ./frontend/
 COPY shared/ ./shared/
+# pnpm workspace の filter 名称に頼らず、ディレクトリ指定でビルド
 RUN --mount=type=cache,target=/root/.local/share/pnpm/store \
-    pnpm --filter frontend... build
+    pnpm -C frontend build
 
 # ---------- Backend: base ----------
 FROM rust:${RUST_VERSION}-bookworm AS backend-base
@@ -60,11 +61,15 @@ COPY --from=frontend-build /app/frontend/dist ./frontend/dist
 ENV SQLX_OFFLINE=true
 RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
     --mount=type=cache,target=/app/target,sharing=locked \
-    cargo +nightly build -p server --release -j 1
+    /usr/local/cargo/bin/cargo +nightly build -p server --release -j 1 \
+    && mkdir -p /app/dist \
+    && cp target/release/server /app/dist/vibe-kanban
 
 # ---------- Runtime ----------
 FROM debian:bookworm-slim AS runtime
-WORKDIR /app
+# CWD を /repos に固定し、相対パスのプロジェクト指定（例: "kazuph/vkanban"）を
+# /repos/kazuph/vkanban として解決できるようにする
+WORKDIR /repos
 
 LABEL org.opencontainers.image.title="vkanban" \
       org.opencontainers.image.description="Vibe Kanban server with embedded frontend" \
@@ -82,8 +87,8 @@ ENV VIBE_KANBAN_ASSET_MODE=prod \
     HOST=0.0.0.0 \
     PORT=8080
 
-# Copy compiled binary only
-COPY --from=backend-build /app/target/release/server /usr/local/bin/vibe-kanban
+# Copy compiled binary only (materialized from cache mount)
+COPY --from=backend-build /app/dist/vibe-kanban /usr/local/bin/vibe-kanban
 
 EXPOSE 8080
 ENTRYPOINT ["/usr/bin/tini", "--"]
