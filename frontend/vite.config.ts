@@ -3,6 +3,7 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import path from 'path'
 import fs from 'fs'
+import os from 'os'
 
 function getBackendPort(): number {
   // Prefer explicit env var
@@ -51,16 +52,22 @@ export default defineConfig({
           .map((s) => s.trim())
           .filter(Boolean);
       }
-      // As a sensible default, allow Tailscale MagicDNS domains.
-      // IP アドレスはデフォルトで許可されるため、ここではホスト名のみ追加します。
-      return ['.ts.net'];
+      // Default: allow local machine hostname and .local, plus Tailscale MagicDNS.
+      const host = os.hostname().toLowerCase();
+      const defaults = new Set<string>(['.ts.net', host]);
+      if (!host.endsWith('.local')) defaults.add(`${host}.local`);
+      return Array.from(defaults);
     })(),
     // Make HMR explicit to avoid IPv6/host inference issues
-    hmr: {
-      host: process.env.HMR_HOST || 'localhost',
-      protocol: 'ws',
-      clientPort: parseInt(process.env.FRONTEND_PORT || '3000'),
-    },
+    // Do NOT hardcode host to 'localhost' — let the client use window.location.hostname.
+    hmr: (() => {
+      const base = {
+        protocol: 'ws',
+        clientPort: parseInt(process.env.FRONTEND_PORT || '3000'),
+      } as const;
+      const h = process.env.HMR_HOST?.trim();
+      return h ? { ...base, host: h } : base;
+    })(),
     proxy: {
       '/api': {
         // Use 127.0.0.1 to avoid IPv6 (::1) resolution mismatches with backend binding
