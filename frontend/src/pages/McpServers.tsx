@@ -18,7 +18,8 @@ import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { JSONEditor } from '@/components/ui/json-editor';
 import { Loader2 } from 'lucide-react';
-import { ProfileConfig, McpConfig } from 'shared/types';
+import { McpConfig } from 'shared/types';
+import type { ExecutorProfile } from 'shared/types';
 import { useUserSystem } from '@/components/config-provider';
 import { mcpServersApi } from '../lib/api';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -31,28 +32,25 @@ export function McpServers() {
   const [mcpError, setMcpError] = useState<string | null>(null);
   const queryClient = useQueryClient();
   const [mcpLoading, setMcpLoading] = useState(true);
-  const [selectedProfile, setSelectedProfile] = useState<ProfileConfig | null>(
-    null
-  );
+  const [selectedProfile, setSelectedProfile] =
+    useState<ExecutorProfile | null>(null);
   const [mcpApplying, setMcpApplying] = useState(false);
   const [mcpConfigPath, setMcpConfigPath] = useState<string>('');
   const [success, setSuccess] = useState(false);
 
   // Initialize selected profile when config loads
   useEffect(() => {
-    if (config?.profile && profiles && !selectedProfile) {
+    if (config?.executor_profile && profiles && !selectedProfile) {
       // Find the current profile
-      const currentProfile = profiles.find(
-        (p) => p.label === config.profile.profile
-      );
+      const currentProfile = profiles[config.executor_profile.executor];
       if (currentProfile) {
         setSelectedProfile(currentProfile);
-      } else if (profiles.length > 0) {
+      } else if (Object.keys(profiles).length > 0) {
         // Default to first profile if current profile not found
-        setSelectedProfile(profiles[0]);
+        setSelectedProfile(Object.values(profiles)[0]);
       }
     }
-  }, [config?.profile, profiles, selectedProfile]);
+  }, [config?.executor_profile, profiles, selectedProfile]);
 
   // Query to load MCP config for selected profile
   const selectedProfileLabel = selectedProfile?.label ?? '';
@@ -63,19 +61,42 @@ export function McpServers() {
     staleTime: 30_000,
   });
 
-  // Reflect query state into local editor state
+  // Reflect MCP config for the selected profile into local editor state
   useEffect(() => {
-    setMcpLoading(mcpQuery.isLoading);
-    setMcpError(mcpQuery.isError ? (mcpQuery.error as any)?.message : null);
-    if (mcpQuery.data) {
-      setMcpConfig(mcpQuery.data.mcp_config);
-      const fullConfig = McpConfigStrategyGeneral.createFullConfig(
-        mcpQuery.data.mcp_config
-      );
-      setMcpServers(JSON.stringify(fullConfig, null, 2));
-      setMcpConfigPath(mcpQuery.data.config_path);
+    const loadMcpServersForProfile = async (profile: ExecutorProfile) => {
+      setMcpLoading(true);
+      setMcpError(null);
+      setMcpConfigPath('');
+
+      try {
+        // Find the key for this profile
+        const profileKey = profiles
+          ? Object.keys(profiles).find((key) => profiles[key] === profile)
+          : null;
+        if (!profileKey) throw new Error('Profile key not found');
+
+        const result = await mcpServersApi.load({ profile: profileKey });
+        setMcpConfig(result.mcp_config);
+        const fullConfig = McpConfigStrategyGeneral.createFullConfig(
+          result.mcp_config
+        );
+        setMcpServers(JSON.stringify(fullConfig, null, 2));
+        setMcpConfigPath(result.config_path);
+      } catch (err: any) {
+        if (err?.message && err.message.includes('does not support MCP')) {
+          setMcpError(err.message);
+        } else {
+          console.error('Error loading MCP servers:', err);
+        }
+      } finally {
+        setMcpLoading(false);
+      }
+    };
+
+    if (selectedProfile) {
+      loadMcpServersForProfile(selectedProfile);
     }
-  }, [mcpQuery.isLoading, mcpQuery.isError, mcpQuery.error, mcpQuery.data]);
+  }, [selectedProfile, profiles]);
 
   const handleMcpServersChange = (value: string) => {
     setMcpServers(value);
@@ -155,9 +176,54 @@ export function McpServers() {
     setMcpApplying(true);
     setMcpError(null);
     try {
-      await saveMutation.mutateAsync();
-    } catch (_) {
-      // handled in onError
+      // Validate and save MCP configuration
+      if (mcpServers.trim()) {
+        try {
+          const fullConfig = JSON.parse(mcpServers);
+          McpConfigStrategyGeneral.validateFullConfig(mcpConfig, fullConfig);
+          const mcpServersConfig =
+            McpConfigStrategyGeneral.extractServersForApi(
+              mcpConfig,
+              fullConfig
+            );
+
+          // Find the key for the selected profile
+          const selectedProfileKey = profiles
+            ? Object.keys(profiles).find(
+                (key) => profiles[key] === selectedProfile
+              )
+            : null;
+          if (!selectedProfileKey) {
+            throw new Error('Selected profile key not found');
+          }
+
+          await mcpServersApi.save(
+            {
+              profile: selectedProfileKey,
+            },
+            { servers: mcpServersConfig }
+          );
+
+          // Show success feedback
+          setSuccess(true);
+          setTimeout(() => setSuccess(false), 3000);
+        } catch (mcpErr) {
+          if (mcpErr instanceof SyntaxError) {
+            setMcpError('Invalid JSON format');
+          } else {
+            setMcpError(
+              mcpErr instanceof Error
+                ? mcpErr.message
+                : 'Failed to save MCP servers'
+            );
+          }
+        }
+      }
+    } catch (err) {
+      setMcpError('Failed to apply MCP server configuration');
+      console.error('Error applying MCP servers:', err);
+    } finally {
+      setMcpApplying(false);
     }
   };
 
@@ -209,9 +275,15 @@ export function McpServers() {
             <div className="space-y-2">
               <Label htmlFor="mcp-executor">Profile</Label>
               <Select
-                value={selectedProfile?.label || ''}
+                value={
+                  selectedProfile
+                    ? Object.keys(profiles || {}).find(
+                        (key) => profiles![key] === selectedProfile
+                      ) || ''
+                    : ''
+                }
                 onValueChange={(value: string) => {
-                  const profile = profiles?.find((p) => p.label === value);
+                  const profile = profiles?.[value];
                   if (profile) setSelectedProfile(profile);
                 }}
               >
@@ -219,11 +291,14 @@ export function McpServers() {
                   <SelectValue placeholder="Select executor" />
                 </SelectTrigger>
                 <SelectContent>
-                  {profiles?.map((profile) => (
-                    <SelectItem key={profile.label} value={profile.label}>
-                      {profile.label}
-                    </SelectItem>
-                  ))}
+                  {profiles &&
+                    Object.entries(profiles)
+                      .sort((a, b) => a[0].localeCompare(b[0]))
+                      .map(([profileKey]) => (
+                        <SelectItem key={profileKey} value={profileKey}>
+                          {profileKey}
+                        </SelectItem>
+                      ))}
                 </SelectContent>
               </Select>
               <p className="text-sm text-muted-foreground">
