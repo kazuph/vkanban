@@ -8,6 +8,7 @@ use regex::{Captures, Regex};
 use sha2::{Digest, Sha256};
 use sqlx::SqlitePool;
 use uuid::Uuid;
+use utils::assets::asset_dir;
 
 #[derive(Debug, thiserror::Error)]
 pub enum ImageError {
@@ -39,7 +40,9 @@ pub struct ImageService {
 
 impl ImageService {
     pub fn new(pool: SqlitePool) -> Result<Self, ImageError> {
-        let cache_dir = utils::cache_dir().join("images");
+        // Store image cache under the app's asset directory to ensure
+        // writability in containerized environments
+        let cache_dir = asset_dir().join("images");
         fs::create_dir_all(&cache_dir)?;
         Ok(Self {
             cache_dir,
