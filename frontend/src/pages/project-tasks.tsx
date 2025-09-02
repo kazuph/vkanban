@@ -31,6 +31,7 @@ import type { TaskWithAttemptStatus, Project, TaskAttempt } from 'shared/types';
 import type { DragEndEvent } from '@/components/ui/shadcn-io/kanban';
 import { Breadcrumb } from '@/components/ui/breadcrumb';
 import { Link } from 'react-router-dom';
+import { useProjectTasks } from '@/hooks/useProjectTasks';
 
 type Task = TaskWithAttemptStatus;
 
@@ -43,9 +44,7 @@ export function ProjectTasks() {
   const navigate = useNavigate();
   const location = useLocation();
 
-  const [tasks, setTasks] = useState<Task[]>([]);
   const [project, setProject] = useState<Project | null>(null);
-  // Local loading removed for tasks; rely on React Query
   const [error, setError] = useState<string | null>(null);
   const { openCreate, openEdit, openDuplicate } = useTaskDialog();
   const [isProjectSettingsOpen, setIsProjectSettingsOpen] = useState(false);
@@ -93,20 +92,27 @@ export function ProjectTasks() {
     [navigate, projectId, selectedTask, isFullscreen]
   );
 
-  // Sync selectedTask with URL params
+  // Stream tasks for this project
+  const {
+    tasks,
+    tasksById,
+    isLoading,
+    error: streamError,
+  } = useProjectTasks(projectId);
+
+  // Sync selectedTask with URL params and live task updates
   useEffect(() => {
-    if (taskId && tasks.length > 0) {
-      const taskFromUrl = tasks.find((t) => t.id === taskId);
-      if (taskFromUrl && taskFromUrl !== selectedTask) {
-        setSelectedTask(taskFromUrl);
+    if (taskId) {
+      const t = taskId ? tasksById[taskId] : undefined;
+      if (t) {
+        setSelectedTask(t);
         setIsPanelOpen(true);
       }
-    } else if (!taskId && selectedTask) {
-      // Clear selection when no taskId in URL
+    } else {
       setSelectedTask(null);
       setIsPanelOpen(false);
     }
-  }, [taskId, tasks, selectedTask]);
+  }, [taskId, tasksById]);
 
   // Define task creation handler
   const handleCreateNewTask = useCallback(() => {
@@ -128,55 +134,15 @@ export function ProjectTasks() {
   const handleCloseTemplateManager = useCallback(() => {
     setIsTemplateManagerOpen(false);
   }, []);
-  // Tasks query with safe polling
-  const queryClient = useQueryClient();
-  const {
-    data: queriedTasks = [],
-    isLoading: isTasksLoading,
-  } = useQuery({
-    queryKey: ['tasks', projectId],
-    queryFn: ({ signal }) => tasksApi.getAll(projectId!, signal),
-    enabled: !!projectId,
-    // Gentle polling (5s). React Query dedupes and cleans up automatically.
-    refetchInterval: 5000,
-    refetchIntervalInBackground: false,
-    // Prevent waterfall when projectId flips rapidly
-    placeholderData: (prev) => prev,
-  });
+  const handleDeleteTask = useCallback(async (taskId: string) => {
+    if (!confirm('Are you sure you want to delete this task?')) return;
 
-  // Sync local tasks state (needed for optimistic updates + selection logic)
-  useEffect(() => {
-    setTasks((prevTasks) => {
-      const newTasks = queriedTasks;
-      if (JSON.stringify(prevTasks) === JSON.stringify(newTasks)) {
-        return prevTasks;
-      }
-
-      // Keep selectedTask in sync if present
-      setSelectedTask((prev) => {
-        if (!prev) return prev;
-        const updated = newTasks.find((t) => t.id === prev.id);
-        if (JSON.stringify(prev) === JSON.stringify(updated)) return prev;
-        return updated || prev;
-      });
-
-      return newTasks;
-    });
-  }, [queriedTasks]);
-
-  const handleDeleteTask = useCallback(
-    async (taskId: string) => {
-      if (!confirm('Are you sure you want to delete this task?')) return;
-
-      try {
-        await tasksApi.delete(taskId);
-        await queryClient.invalidateQueries({ queryKey: ['tasks', projectId] });
-      } catch (error) {
-        setError('Failed to delete task');
-      }
-    },
-    [projectId, queryClient]
-  );
+    try {
+      await tasksApi.delete(taskId);
+    } catch (error) {
+      setError('Failed to delete task');
+    }
+  }, []);
 
   const handleEditTask = useCallback(
     (task: Task) => {
@@ -220,40 +186,27 @@ export function ProjectTasks() {
   const handleDragEnd = useCallback(
     async (event: DragEndEvent) => {
       const { active, over } = event;
-
       if (!over || !active.data.current) return;
 
-      const taskId = active.id as string;
+      const draggedTaskId = active.id as string;
       const newStatus = over.id as Task['status'];
-      const task = tasks.find((t) => t.id === taskId);
-
+      const task = tasksById[draggedTaskId];
       if (!task || task.status === newStatus) return;
 
-      // Optimistically update the UI immediately
-      const previousStatus = task.status;
-      setTasks((prev) =>
-        prev.map((t) => (t.id === taskId ? { ...t, status: newStatus } : t))
-      );
-
       try {
-        await tasksApi.update(taskId, {
+        await tasksApi.update(draggedTaskId, {
           title: task.title,
           description: task.description,
           status: newStatus,
           parent_task_attempt: task.parent_task_attempt,
           image_ids: null,
         });
+        // UI will update via SSE stream
       } catch (err) {
-        // Revert the optimistic update if the API call failed
-        setTasks((prev) =>
-          prev.map((t) =>
-            t.id === taskId ? { ...t, status: previousStatus } : t
-          )
-        );
         setError('Failed to update task status');
       }
     },
-    [tasks]
+    [tasksById]
   );
 
   // Setup keyboard shortcuts
@@ -265,43 +218,25 @@ export function ProjectTasks() {
     onC: handleCreateNewTask,
   });
 
-  // Initialize project data when projectId changes (tasks use React Query)
+  // Initialize project when projectId changes
   useEffect(() => {
     if (projectId) {
       fetchProject();
     }
   }, [projectId, fetchProject]);
 
-  // Handle direct navigation to task URLs
-  useEffect(() => {
-    if (taskId && tasks.length > 0) {
-      const task = tasks.find((t) => t.id === taskId);
-      if (task) {
-        setSelectedTask((prev) => {
-          if (JSON.stringify(prev) === JSON.stringify(task)) return prev;
-          return task;
-        });
-        setIsPanelOpen(true);
-      } else {
-        // Task not found in current array - refetch to get latest data
-        queryClient.invalidateQueries({ queryKey: ['tasks', projectId] });
-      }
-    } else if (taskId && tasks.length === 0 && !isTasksLoading) {
-      // If we have a taskId but no tasks loaded, fetch tasks
-      queryClient.invalidateQueries({ queryKey: ['tasks', projectId] });
-    } else if (!taskId) {
-      // Close panel when no taskId in URL
-      setIsPanelOpen(false);
-      setSelectedTask(null);
-    }
-  }, [taskId, tasks, isTasksLoading, queryClient, projectId]);
+  // Remove legacy direct-navigation handler; live sync above covers this
 
-  if (isTasksLoading) {
+  if (isLoading) {
     return <Loader message="Loading tasks..." size={32} className="py-8" />;
   }
 
-  if (error) {
-    return <div className="text-center py-8 text-destructive">{error}</div>;
+  if (error || streamError) {
+    return (
+      <div className="text-center py-8 text-destructive">
+        {error || streamError}
+      </div>
+    );
   }
 
   return (
