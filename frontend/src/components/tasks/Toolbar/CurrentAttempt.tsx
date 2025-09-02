@@ -373,7 +373,7 @@ function CurrentAttempt({
           <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">
             Profile
           </div>
-          <div className="text-sm font-medium">{selectedAttempt.profile}</div>
+          <div className="text-sm font-medium">{selectedAttempt.executor}</div>
         </div>
 
         <div className="min-w-0">
@@ -697,7 +697,7 @@ function CurrentAttempt({
                           {new Date(attempt.created_at).toLocaleTimeString()}
                         </span>
                         <span className="text-xs text-muted-foreground">
-                          {attempt.profile || 'Base Agent'}
+                          {attempt.executor || 'Base Agent'}
                         </span>
                       </div>
                     </DropdownMenuItem>

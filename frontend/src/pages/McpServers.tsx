@@ -19,10 +19,9 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { JSONEditor } from '@/components/ui/json-editor';
 import { Loader2 } from 'lucide-react';
 import { McpConfig } from 'shared/types';
-import type { ExecutorProfile } from 'shared/types';
+import type { BaseCodingAgent, ExecutorConfig } from 'shared/types';
 import { useUserSystem } from '@/components/config-provider';
 import { mcpServersApi } from '../lib/api';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { McpConfigStrategyGeneral } from '../lib/mcp-strategies';
 
 export function McpServers() {
@@ -30,10 +29,11 @@ export function McpServers() {
   const [mcpServers, setMcpServers] = useState('{}');
   const [mcpConfig, setMcpConfig] = useState<McpConfig | null>(null);
   const [mcpError, setMcpError] = useState<string | null>(null);
-  const queryClient = useQueryClient();
+  // react-query removed for MCP page; manual load is used to control profile key mapping
   const [mcpLoading, setMcpLoading] = useState(true);
-  const [selectedProfile, setSelectedProfile] =
-    useState<ExecutorProfile | null>(null);
+  const [selectedProfile, setSelectedProfile] = useState<ExecutorConfig | null>(
+    null
+  );
   const [mcpApplying, setMcpApplying] = useState(false);
   const [mcpConfigPath, setMcpConfigPath] = useState<string>('');
   const [success, setSuccess] = useState(false);
@@ -52,18 +52,12 @@ export function McpServers() {
     }
   }, [config?.executor_profile, profiles, selectedProfile]);
 
-  // Query to load MCP config for selected profile
-  const selectedProfileLabel = selectedProfile?.label ?? '';
-  const mcpQuery = useQuery({
-    queryKey: ['mcp-config', selectedProfileLabel],
-    queryFn: () => mcpServersApi.load({ profile: selectedProfileLabel }),
-    enabled: !!selectedProfileLabel,
-    staleTime: 30_000,
-  });
+  // react-query removed; see effect below for manual load
 
   // Reflect MCP config for the selected profile into local editor state
   useEffect(() => {
-    const loadMcpServersForProfile = async (profile: ExecutorProfile) => {
+    const loadMcpServersForProfile = async (profile: ExecutorConfig) => {
+      // Reset state when loading
       setMcpLoading(true);
       setMcpError(null);
       setMcpConfigPath('');
@@ -75,7 +69,10 @@ export function McpServers() {
           : null;
         if (!profileKey) throw new Error('Profile key not found');
 
-        const result = await mcpServersApi.load({ profile: profileKey });
+        const result = await mcpServersApi.load({
+          executor: profileKey as BaseCodingAgent,
+        });
+        // Store the McpConfig from backend
         setMcpConfig(result.mcp_config);
         const fullConfig = McpConfigStrategyGeneral.createFullConfig(
           result.mcp_config
@@ -141,35 +138,7 @@ export function McpServers() {
     }
   };
 
-  // Mutation to save MCP config
-  const saveMutation = useMutation({
-    mutationFn: async () => {
-      if (!selectedProfile || !mcpConfig) return;
-      if (!mcpServers.trim()) return;
-      const fullConfig = JSON.parse(mcpServers);
-      McpConfigStrategyGeneral.validateFullConfig(mcpConfig, fullConfig);
-      const mcpServersConfig = McpConfigStrategyGeneral.extractServersForApi(
-        mcpConfig,
-        fullConfig
-      );
-      await mcpServersApi.save(
-        { profile: selectedProfile.label },
-        { servers: mcpServersConfig }
-      );
-    },
-    onSuccess: async () => {
-      setSuccess(true);
-      setTimeout(() => setSuccess(false), 3000);
-      // Refresh the loaded config
-      await queryClient.invalidateQueries({
-        queryKey: ['mcp-config', selectedProfile?.label],
-      });
-    },
-    onError: (err: any) => {
-      setMcpError(err?.message || 'Failed to apply MCP server configuration');
-    },
-    onSettled: () => setMcpApplying(false),
-  });
+  // Save handled inline in handleApplyMcpServers
 
   const handleApplyMcpServers = async () => {
     if (!selectedProfile || !mcpConfig) return;
@@ -199,7 +168,7 @@ export function McpServers() {
 
           await mcpServersApi.save(
             {
-              profile: selectedProfileKey,
+              executor: selectedProfileKey as BaseCodingAgent,
             },
             { servers: mcpServersConfig }
           );
