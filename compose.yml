@@ -8,6 +8,7 @@ services:
         RUST_VERSION: 1.79
         PNPM_VERSION: 9
     image: vkanban:dev
+    user: "${UID:-1000}:${GID:-1000}"
     ports:
       - "8080:8080"
     environment:
@@ -15,6 +16,8 @@ services:
       - PORT=8080
       - VIBE_KANBAN_ASSET_MODE=prod
       - VIBE_KANBAN_ASSET_DIR=/data
+      # 参考: UID/GID は docker compose 実行元の環境変数から展開されます
+      # 例) `UID=$(id -u) GID=$(id -g) make run`
     volumes:
       - ./data:/data
       # Persist worktrees and temp files used by the app (Linux path inside container)
