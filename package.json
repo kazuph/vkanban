@@ -1,6 +1,6 @@
 {
   "name": "@kazuph/vkanban",
-  "version": "0.0.72",
+  "version": "0.0.73",
   "private": true,
   "bin": {
     "vkanban": "npx-cli/bin/cli.js"
