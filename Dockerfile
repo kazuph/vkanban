@@ -82,6 +82,11 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
       ca-certificates tini git \
     && rm -rf /var/lib/apt/lists/*
 
+# Configure git system-wide safe directories so libgit2 accepts bind-mounted repos
+RUN git config --system --add safe.directory /repos \
+ && git config --system --add safe.directory /repos/* \
+ && git config --system --add safe.directory '*'
+
 # Runtime defaults (overridable)
 ENV VIBE_KANBAN_ASSET_MODE=prod \
     HOST=0.0.0.0 \
