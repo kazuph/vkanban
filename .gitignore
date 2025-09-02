@@ -89,3 +89,5 @@ frontend/.npm-cache/
 .playwright-browsers/
 test-results/
 .pnpm-store/
+data/
+var_tmp_vkanban/
