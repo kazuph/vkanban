@@ -43,3 +43,4 @@ When working on any task that involves changes to the backend and the frontend, 
 
 SQLX queries should be located in backend/src/models/\*
 Use getters and setters instead of raw SQL queries where possible.
+
