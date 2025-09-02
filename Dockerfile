@@ -90,6 +90,10 @@ ENV VIBE_KANBAN_ASSET_MODE=prod \
 # Copy compiled binary only (materialized from cache mount)
 COPY --from=backend-build /app/dist/vibe-kanban /usr/local/bin/vibe-kanban
 
+# Minimal entrypoint to configure git safe.directory and start the app
+COPY docker/entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh
+
 EXPOSE 8080
 ENTRYPOINT ["/usr/bin/tini", "--"]
-CMD ["vibe-kanban"]
+CMD ["/usr/local/bin/entrypoint.sh"]

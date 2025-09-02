@@ -16,6 +16,7 @@ services:
       - PORT=8080
       - VIBE_KANBAN_ASSET_MODE=prod
       - VIBE_KANBAN_ASSET_DIR=/data
+      - GIT_CONFIG_GLOBAL=/data/gitconfig
       # 参考: UID/GID は docker compose 実行元の環境変数から展開されます
       # 例) `UID=$(id -u) GID=$(id -g) make run`
     volumes:
