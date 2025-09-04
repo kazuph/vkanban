@@ -1,104 +1,68 @@
-# syntax=docker/dockerfile:1.7-labs
+# Build stage
+FROM node:24-alpine AS builder
 
-# ---------- Build args (override at build time if needed) ----------
-ARG NODE_VERSION=22
-ARG RUST_VERSION=1.82
-ARG PNPM_VERSION=9
+# Install build dependencies
+RUN apk add --no-cache \
+    curl \
+    build-base \
+    perl
 
-# ---------- Frontend: deps ----------
-FROM node:${NODE_VERSION}-bookworm AS frontend-deps
-WORKDIR /app
-ENV PNPM_HOME=/root/.local/share/pnpm \
-    PATH="/root/.local/share/pnpm:${PATH}"
-RUN corepack enable && corepack prepare pnpm@${PNPM_VERSION} --activate
+# Install Rust
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+ENV PATH="/root/.cargo/bin:${PATH}"
 
-# Copy only manifests for better layer caching
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
-COPY frontend/package.json ./frontend/
-COPY npx-cli/package.json ./npx-cli/
+# Copy package files for dependency caching
+COPY package*.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY frontend/package*.json ./frontend/
+COPY npx-cli/package*.json ./npx-cli/
 
-# Install dependencies using cache mounts (fast, reproducible)
-RUN --mount=type=cache,target=/root/.local/share/pnpm/store \
-    pnpm install --frozen-lockfile
+# Install pnpm and dependencies
+RUN npm install -g pnpm && pnpm install
 
-# ---------- Frontend: build ----------
-FROM frontend-deps AS frontend-build
-COPY frontend/ ./frontend/
-COPY shared/ ./shared/
-# pnpm workspace の filter 名称に頼らず、ディレクトリ指定でビルド
-RUN --mount=type=cache,target=/root/.local/share/pnpm/store \
-    pnpm -C frontend build
+# Copy source code
+COPY . .
 
-# ---------- Backend: base ----------
-FROM rust:${RUST_VERSION}-bookworm AS backend-base
-WORKDIR /app
-ENV CARGO_REGISTRIES_CRATES_IO_PROTOCOL=sparse \
-    CARGO_TERM_COLOR=always \
-    # Lower memory pressure for large deps (octocrab/hyper/rustls)
-    RUSTFLAGS="-C debuginfo=0 -C opt-level=2 -C codegen-units=32 -C lto=off"
+# Build application
+RUN npm run generate-types
+RUN cd frontend && npm install && npm run build
+RUN cargo build --release --bin server
 
-# System deps for compiling Rust crates
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
-    --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
-    apt-get update && apt-get install -y --no-install-recommends \
-      pkg-config build-essential ca-certificates git clang lld \
-    && rm -rf /var/lib/apt/lists/*
+# Runtime stage
+FROM alpine:latest AS runtime
 
-# Install nightly toolchain for edition 2024 crates
-RUN rustup toolchain install nightly -c rustc,cargo,rust-std --profile minimal
+# Install runtime dependencies
+RUN apk add --no-cache \
+    ca-certificates \
+    tini \
+    libgcc \
+    wget
 
-# ---------- Backend: build ----------
-FROM backend-base AS backend-build
-# Copy manifests first (best-effort cache) then fetch deps
-COPY Cargo.toml ./
-COPY crates ./crates
-COPY assets ./assets
+# Create app user for security
+RUN addgroup -g 1001 -S appgroup && \
+    adduser -u 1001 -S appuser -G appgroup
 
-# Bring in built frontend assets for rust-embed
-COPY --from=frontend-build /app/frontend/dist ./frontend/dist
+# Copy binary from builder
+COPY --from=builder /app/target/release/server /usr/local/bin/server
 
-# Build with cache mounts (registry + target). Limit parallelism to reduce memory.
-ENV SQLX_OFFLINE=true
-RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
-    --mount=type=cache,target=/app/target,sharing=locked \
-    /usr/local/cargo/bin/cargo +nightly build -p server --release -j 1 \
-    && mkdir -p /app/dist \
-    && cp target/release/server /app/dist/vibe-kanban
+# Create repos directory and set permissions
+RUN mkdir -p /repos && \
+    chown -R appuser:appgroup /repos
 
-# ---------- Runtime ----------
-FROM debian:bookworm-slim AS runtime
-# CWD を /repos に固定し、相対パスのプロジェクト指定（例: "kazuph/vkanban"）を
-# /repos/kazuph/vkanban として解決できるようにする
+# Switch to non-root user
+USER appuser
+
+# Set runtime environment
+ENV HOST=0.0.0.0
+ENV PORT=3000
+EXPOSE 3000
+
+# Set working directory
 WORKDIR /repos
 
-LABEL org.opencontainers.image.title="vkanban" \
-      org.opencontainers.image.description="Vibe Kanban server with embedded frontend" \
-      org.opencontainers.image.source="https://github.com/kazuph/vkanban" \
-      org.opencontainers.image.licenses="Apache-2.0"
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+    CMD wget --quiet --tries=1 --spider "http://${HOST:-localhost}:${PORT:-3000}" || exit 1
 
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
-    --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
-    apt-get update && apt-get install -y --no-install-recommends \
-      ca-certificates tini git \
-    && rm -rf /var/lib/apt/lists/*
-
-# Configure git system-wide safe directories so libgit2 accepts bind-mounted repos
-RUN git config --system --add safe.directory /repos \
- && git config --system --add safe.directory /repos/* \
- && git config --system --add safe.directory '*'
-
-# Runtime defaults (overridable)
-ENV VIBE_KANBAN_ASSET_MODE=prod \
-    HOST=0.0.0.0 \
-    PORT=8080
-
-# Copy compiled binary only (materialized from cache mount)
-COPY --from=backend-build /app/dist/vibe-kanban /usr/local/bin/vibe-kanban
-
-# Minimal entrypoint to configure git safe.directory and start the app
-COPY docker/entrypoint.sh /usr/local/bin/entrypoint.sh
-RUN chmod +x /usr/local/bin/entrypoint.sh
-
-EXPOSE 8080
-ENTRYPOINT ["/usr/bin/tini", "--"]
-CMD ["/usr/local/bin/entrypoint.sh"]
+# Run the application
+ENTRYPOINT ["/sbin/tini", "--"]
+CMD ["server"]
