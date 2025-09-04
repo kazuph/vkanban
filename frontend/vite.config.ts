@@ -1,9 +1,10 @@
+// vite.config.ts
 import { sentryVitePlugin } from "@sentry/vite-plugin";
-import { defineConfig } from 'vite'
-import react from '@vitejs/plugin-react'
-import path from 'path'
-import fs from 'fs'
-import os from 'os'
+import { defineConfig, Plugin } from "vite";
+import react from "@vitejs/plugin-react";
+import path from "path";
+import fs from "fs";
+import os from "os";
 
 function getBackendPort(): number {
   // Prefer explicit env var
@@ -23,23 +24,66 @@ function getBackendPort(): number {
   return 3001;
 }
 
-export default defineConfig({
-  plugins: [react(), sentryVitePlugin({
-    org: "bloop-ai",
-    project: "vibe-kanban"
-  })],
+function executorSchemasPlugin(): Plugin {
+  const VIRTUAL_ID = "virtual:executor-schemas";
+  const RESOLVED_VIRTUAL_ID = "\0" + VIRTUAL_ID;
 
+  return {
+    name: "executor-schemas-plugin",
+    resolveId(id) {
+      if (id === VIRTUAL_ID) return RESOLVED_VIRTUAL_ID; // keep it virtual
+      return null;
+    },
+    load(id) {
+      if (id !== RESOLVED_VIRTUAL_ID) return null;
+
+      const schemasDir = path.resolve(__dirname, "../shared/schemas");
+      const files = fs.existsSync(schemasDir)
+        ? fs.readdirSync(schemasDir).filter((f) => f.endsWith(".json"))
+        : [];
+
+      const imports: string[] = [];
+      const entries: string[] = [];
+
+      files.forEach((file, i) => {
+        const varName = `__schema_${i}`;
+        const importPath = `shared/schemas/${file}`; // uses your alias
+        const key = file.replace(/\.json$/, "").toUpperCase(); // claude_code -> CLAUDE_CODE
+        imports.push(`import ${varName} from "${importPath}";`);
+        entries.push(`  "${key}": ${varName}`);
+      });
+
+      // IMPORTANT: pure JS (no TS types), and quote keys.
+      const code = `
+${imports.join("\n")}
+
+export const schemas = {
+${entries.join(",\n")}
+};
+
+export default schemas;
+`;
+      return code;
+    },
+  };
+}
+
+export default defineConfig({
+  plugins: [
+    react(),
+    sentryVitePlugin({ org: "bloop-ai", project: "vibe-kanban" }),
+    executorSchemasPlugin(),
+  ],
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
-      "shared": path.resolve(__dirname, "../shared"),
+      shared: path.resolve(__dirname, "../shared"),
     },
   },
-
   server: {
     // Bind to all interfaces so external hosts can access dev server
     host: true,
-    port: parseInt(process.env.FRONTEND_PORT || '3000'),
+    port: parseInt(process.env.FRONTEND_PORT || "3000"),
     // Allow access via Tailscale and other non-localhost hosts.
     // Security note: keep this list tight for dev convenience; expand via env when needed.
     // Docs: https://vite.dev/config/server-options#server-allowedhosts
@@ -70,13 +114,13 @@ export default defineConfig({
     hmr: (() => {
       const base = {
         protocol: 'ws',
-        clientPort: parseInt(process.env.FRONTEND_PORT || '3000'),
+        clientPort: parseInt(process.env.FRONTEND_PORT || "3000"),
       } as const;
       const h = process.env.HMR_HOST?.trim();
       return h ? { ...base, host: h } : base;
     })(),
     proxy: {
-      '/api': {
+      "/api": {
         // Use 127.0.0.1 to avoid IPv6 (::1) resolution mismatches with backend binding
         target: `http://127.0.0.1:${getBackendPort()}`,
         changeOrigin: true,
@@ -91,6 +135,9 @@ export default defineConfig({
         },
       },
     },
+    fs: {
+      allow: [path.resolve(__dirname, "."), path.resolve(__dirname, "..")],
+    },
   },
 
   // Ensure `vite preview` is also reachable from external hosts
@@ -98,7 +145,5 @@ export default defineConfig({
     host: true,
   },
 
-  build: {
-    sourcemap: true
-  }
-})
+  build: { sourcemap: true },
+});
