@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState, useMemo } from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { Plus } from 'lucide-react';
+import { AlertTriangle, Plus } from 'lucide-react';
 import { Loader } from '@/components/ui/loader';
 import { projectsApi, tasksApi, attemptsApi } from '@/lib/api';
 import { useTaskDialog } from '@/contexts/task-dialog-context';
@@ -33,6 +33,7 @@ import type { DragEndEvent } from '@/components/ui/shadcn-io/kanban';
 import { Breadcrumb } from '@/components/ui/breadcrumb';
 import { Link } from 'react-router-dom';
 import { useProjectTasks } from '@/hooks/useProjectTasks';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 
 type Task = TaskWithAttemptStatus;
 
@@ -236,10 +237,16 @@ export function ProjectTasks() {
     return <Loader message="Loading tasks..." size={32} className="py-8" />;
   }
 
-  if (error || streamError) {
+  if (error) {
     return (
-      <div className="text-center py-8 text-destructive">
-        {error || streamError}
+      <div className="p-4">
+        <Alert>
+          <AlertTitle className="flex items-center gap-2">
+            <AlertTriangle size="16" />
+            Error
+          </AlertTitle>
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
       </div>
     );
   }
@@ -278,6 +285,17 @@ export function ProjectTasks() {
         isPanelOpen,
         isFullscreen
       )}`}>
+        {streamError && (
+          <div>
+            <Alert>
+              <AlertTitle className="flex items-center gap-2">
+                <AlertTriangle size="16" />
+                Reconnecting
+              </AlertTitle>
+              <AlertDescription>{streamError}</AlertDescription>
+            </Alert>
+          </div>
+        )}
         {/* Left Column - Kanban Section */}
         <div className={getKanbanSectionClasses(isPanelOpen, isFullscreen)}>
         {tasks.length === 0 ? (
