@@ -1,9 +1,10 @@
-import { Diff as Diff, ThemeMode } from 'shared/types';
+import { Diff } from 'shared/types';
 import { DiffModeEnum, DiffView } from '@git-diff-view/react';
 import { generateDiffFile } from '@git-diff-view/file';
 import { useMemo } from 'react';
 import { useConfig } from '@/components/config-provider';
 import { getHighLightLanguageFromPath } from '@/utils/extToLanguage';
+import { getActualTheme } from '@/utils/theme';
 import { Button } from '@/components/ui/button';
 import {
   ChevronRight,
@@ -19,7 +20,6 @@ import {
 import '@/styles/diff-style-overrides.css';
 import { attemptsApi } from '@/lib/api';
 import type { TaskAttempt } from 'shared/types';
-import { isDarkTheme } from '@/utils/theme';
 
 type Props = {
   diff: Diff;
@@ -47,9 +47,7 @@ export default function DiffCard({
   selectedAttempt,
 }: Props) {
   const { config } = useConfig();
-  const theme = isDarkTheme(config?.theme || ThemeMode.SOLARIZED_LIGHT)
-    ? 'dark'
-    : 'light';
+  const theme = getActualTheme(config?.theme);
 
   const oldName = diff.oldPath || undefined;
   const newName = diff.newPath || oldName || 'unknown';

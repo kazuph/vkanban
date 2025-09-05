@@ -5,14 +5,13 @@ import {
   DiffLineType,
   parseInstance,
 } from '@git-diff-view/react';
-import { ThemeMode } from 'shared/types';
 import { ChevronRight, ChevronUp } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useConfig } from '@/components/config-provider';
 import { getHighLightLanguageFromPath } from '@/utils/extToLanguage';
+import { getActualTheme } from '@/utils/theme';
 import '@/styles/diff-style-overrides.css';
 import '@/styles/edit-diff-overrides.css';
-import { isDarkTheme } from '@/utils/theme';
 
 type Props = {
   path: string;
@@ -68,11 +67,7 @@ function EditDiffRenderer({
   const { config } = useConfig();
   const [expanded, setExpanded] = useExpandable(expansionKey, false);
 
-  const theme: 'light' | 'dark' | undefined = isDarkTheme(
-    config?.theme || ThemeMode.SYSTEM
-  )
-    ? 'dark'
-    : 'light';
+  const theme = getActualTheme(config?.theme);
 
   const { hunks, hideLineNumbers, additions, deletions, isValidDiff } = useMemo(
     () => processUnifiedDiff(unifiedDiff, hasLineNumbers),
