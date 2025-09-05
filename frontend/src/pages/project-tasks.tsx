@@ -70,6 +70,7 @@ export function ProjectTasks() {
     queryKey: ['taskAttempts', selectedTask?.id],
     queryFn: ({ signal }) => attemptsApi.getAll(selectedTask!.id, signal),
     enabled: !!selectedTask?.id,
+    refetchInterval: 5000,
   });
 
   // Selected attempt logic
