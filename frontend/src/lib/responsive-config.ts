@@ -52,16 +52,15 @@ export const getBackdropClasses = (forceFullScreen: boolean) => {
   return `fixed inset-0 z-40 bg-background/80 backdrop-blur-sm ${PANEL_SIDE_BY_SIDE_BREAKPOINT}:hidden ${forceFullScreen ? '' : 'hidden'}`;
 };
 
-// Generate classes for main container (enable flex layout in side-by-side mode)
+// Generate classes for main container (always column layout, side-by-side moved to inner wrapper)
 export const getMainContainerClasses = (
   isPanelOpen: boolean,
   forceFullScreen: boolean
 ) => {
-  // Make the main container explicitly take the available height so
-  // children that rely on 100% heights (e.g., Virtuoso) can size correctly
-  // at wider breakpoints.
-  const base = isPanelOpen && forceFullScreen ? 'w-full h-full' : `${PANEL_SIDE_BY_SIDE_BREAKPOINT}:flex`;
-  return `h-full min-h-0 ${base}`;
+  const overlayClasses =
+    isPanelOpen && forceFullScreen ? 'w-full h-full' : 'h-full flex flex-col';
+
+  return `${overlayClasses}`;
 };
 
 // Generate classes for kanban section

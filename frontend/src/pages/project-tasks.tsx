@@ -11,15 +11,6 @@ import { TaskTemplateManager } from '@/components/TaskTemplateManager';
 import { useKeyboardShortcuts } from '@/lib/keyboard-shortcuts';
 import { useSearch } from '@/contexts/search-context';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from '@/components/ui/dialog';
-
 import {
   getKanbanSectionClasses,
   getMainContainerClasses,
@@ -45,12 +36,16 @@ export function ProjectTasks() {
   }>();
   const navigate = useNavigate();
   const location = useLocation();
+  const queryClient = useQueryClient();
 
+  // Projects State
   const [project, setProject] = useState<Project | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const { openCreate, openEdit, openDuplicate } = useTaskDialog();
   const [isProjectSettingsOpen, setIsProjectSettingsOpen] = useState(false);
-  const { query: searchQuery } = useSearch();
+
+  // Task dialog management
+  const { openCreate, openEdit } = useTaskDialog();
 
   // Template management state
   const [isTemplateManagerOpen, setIsTemplateManagerOpen] = useState(false);
@@ -80,60 +75,75 @@ export function ProjectTasks() {
       const found = attempts.find((a) => a.id === attemptId);
       if (found) return found;
     }
-    return attempts[0] || null; // Most recent fallback
+    return attempts[0] || null;
   }, [attempts, attemptId]);
 
-  // Navigation callback for attempt selection
   const setSelectedAttempt = useCallback(
     (attempt: TaskAttempt | null) => {
-      if (!selectedTask) return;
-
-      const baseUrl = `/projects/${projectId}/tasks/${selectedTask.id}`;
-      const attemptUrl = attempt ? `/attempts/${attempt.id}` : '';
-      const fullSuffix = isFullscreen ? '/full' : '';
-      const fullUrl = `${baseUrl}${attemptUrl}${fullSuffix}`;
-
+      if (!attempt || !selectedTask) return;
+      const baseUrl = `/projects/${projectId}/tasks/${selectedTask.id}/attempts/${attempt.id}`;
+      const fullUrl = isFullscreen ? `${baseUrl}/full` : baseUrl;
       navigate(fullUrl, { replace: true });
     },
     [navigate, projectId, selectedTask, isFullscreen]
   );
 
-  // Stream tasks for this project
   const {
-    tasks,
+    data: tasks = [],
+    isLoading: tasksLoading,
+    isError: tasksError,
+    streamError,
     tasksById,
-    isLoading,
-    error: streamError,
-  } = useProjectTasks(projectId);
+  } = useProjectTasks(projectId!);
 
-  // Sync selectedTask with URL params and live task updates
-  useEffect(() => {
-    if (taskId) {
-      const t = taskId ? tasksById[taskId] : undefined;
-      if (t) {
-        setSelectedTask(t);
-        setIsPanelOpen(true);
-      }
-    } else {
-      setSelectedTask(null);
-      setIsPanelOpen(false);
-    }
-  }, [taskId, tasksById]);
+  // Search query from search context
+  const { searchQuery } = useSearch();
 
-  // Define task creation handler
+  // Keyboard shortcuts
+  useKeyboardShortcuts({
+    'Ctrl+N': () => handleCreateNewTask(),
+    'Cmd+N': () => handleCreateNewTask(),
+  });
+
   const handleCreateNewTask = useCallback(() => {
     if (!projectId) return;
-    openCreate();
-  }, [projectId, openCreate]);
+    openCreate(projectId);
+  }, [openCreate, projectId]);
 
-  // Full screen
+  const handleDragEnd = useCallback(
+    async (event: DragEndEvent) => {
+      const { active, over } = event;
+      if (!over || active.id === over.id) return;
+
+      const task = tasks.find((t) => t.id === active.id);
+      if (!task) return;
+
+      // Handle column drop
+      if (over.id !== task.status) {
+        try {
+          await tasksApi.update(task.id, { status: over.id as any });
+          queryClient.invalidateQueries({ queryKey: ['projectTasks'] });
+        } catch (error) {
+          console.error('Failed to update task status:', error);
+          setError('Failed to update task status');
+        }
+      }
+    },
+    [tasks, queryClient]
+  );
 
   const fetchProject = useCallback(async () => {
+    if (!projectId) return;
+
     try {
-      const result = await projectsApi.getById(projectId!);
-      setProject(result);
+      setIsLoading(true);
+      const projectData = await projectsApi.getById(projectId);
+      setProject(projectData);
+      setError(null);
     } catch (err) {
       setError('Failed to load project');
+    } finally {
+      setIsLoading(false);
     }
   }, [projectId]);
 
@@ -160,77 +170,65 @@ export function ProjectTasks() {
 
   const handleDuplicateTask = useCallback(
     (task: Task) => {
-      openDuplicate(task);
+      openCreate(projectId!, {
+        title: `${task.title} (Copy)`,
+        description: task.description || '',
+        status: task.status,
+      });
     },
-    [openDuplicate]
+    [openCreate, projectId]
   );
 
   const handleViewTaskDetails = useCallback(
-    (task: Task, attemptIdToShow?: string) => {
-      // setSelectedTask(task);
-      // setIsPanelOpen(true);
-      // Update URL to include task ID and optionally attempt ID
-      const targetUrl = attemptIdToShow
-        ? `/projects/${projectId}/tasks/${task.id}/attempts/${attemptIdToShow}`
-        : `/projects/${projectId}/tasks/${task.id}`;
-      navigate(targetUrl, { replace: true });
+    (task: Task) => {
+      setSelectedTask(task);
+      setIsPanelOpen(true);
     },
-    [projectId, navigate]
+    []
   );
 
   const handleClosePanel = useCallback(() => {
-    // setIsPanelOpen(false);
-    // setSelectedTask(null);
-    // Remove task ID from URL when closing panel
-    navigate(`/projects/${projectId}/tasks`, { replace: true });
-  }, [projectId, navigate]);
+    setIsPanelOpen(false);
+    setSelectedTask(null);
+    // Navigate back to project level (remove task/attempt from URL)
+    navigate(`/projects/${projectId}`, { replace: true });
+  }, [navigate, projectId]);
 
   const handleProjectSettingsSuccess = useCallback(() => {
     setIsProjectSettingsOpen(false);
-    fetchProject(); // Refresh project data after settings change
+    fetchProject();
   }, [fetchProject]);
 
-  const handleDragEnd = useCallback(
-    async (event: DragEndEvent) => {
-      const { active, over } = event;
-      if (!over || !active.data.current) return;
-
-      const draggedTaskId = active.id as string;
-      const newStatus = over.id as Task['status'];
-      const task = tasksById[draggedTaskId];
-      if (!task || task.status === newStatus) return;
-
-      try {
-        await tasksApi.update(draggedTaskId, {
-          title: task.title,
-          description: task.description,
-          status: newStatus,
-          parent_task_attempt: task.parent_task_attempt,
-          image_ids: null,
-        });
-        // UI will update via SSE stream
-      } catch (err) {
-        setError('Failed to update task status');
-      }
-    },
-    [tasksById]
-  );
-
-  // Setup keyboard shortcuts
-  useKeyboardShortcuts({
-    navigate,
-    currentPath: window.location.pathname,
-    hasOpenDialog: isTemplateManagerOpen || isProjectSettingsOpen,
-    closeDialog: () => {}, // No local dialog to close
-    onC: handleCreateNewTask,
-  });
-
-  // Initialize project when projectId changes
   useEffect(() => {
     if (projectId) {
       fetchProject();
     }
-  }, [projectId, fetchProject]);
+  }, [fetchProject, projectId]);
+
+  // Handle direct navigation to task details
+  useEffect(() => {
+    if (taskId && tasks.length > 0) {
+      const task = tasks.find((t) => t.id === taskId);
+      if (task) {
+        setSelectedTask(task);
+        setIsPanelOpen(true);
+      } else {
+        // Task not found, navigate back to project
+        navigate(`/projects/${projectId}`, { replace: true });
+      }
+    } else if (!taskId && (selectedTask || isPanelOpen)) {
+      // No task in URL but panel is open, close it
+      setSelectedTask(null);
+      setIsPanelOpen(false);
+    }
+  }, [taskId, tasks, projectId, navigate, selectedTask, isPanelOpen]);
+
+  // Auto-fetch project when tasks load if not already loaded
+  useEffect(() => {
+    if (!project && projectId && tasks.length > 0) {
+      fetchProject();
+    }
+  }, [project, projectId, tasks.length, fetchProject]);
 
   // Remove legacy direct-navigation handler; live sync above covers this
 
@@ -253,7 +251,9 @@ export function ProjectTasks() {
   }
 
   return (
-    <div className={"h-full flex flex-col"}>
+    <div
+      className={`min-h-full ${getMainContainerClasses(isPanelOpen, isFullscreen)}`}
+    >
       {!isFullscreen && (
         <div className="w-full border-b bg-background/60 backdrop-blur supports-[backdrop-filter]:bg-background/40">
           <div className="w-full px-3 sm:px-4 py-2">
@@ -281,52 +281,49 @@ export function ProjectTasks() {
           </div>
         </div>
       )}
-      {/* Main area: takes remaining height below header */}
-      <div className={`flex-1 min-h-0 ${getMainContainerClasses(
-        isPanelOpen,
-        isFullscreen
-      )}`}>
-        {streamError && (
-          <div>
-            <Alert>
-              <AlertTitle className="flex items-center gap-2">
-                <AlertTriangle size="16" />
-                Reconnecting
-              </AlertTitle>
-              <AlertDescription>{streamError}</AlertDescription>
-            </Alert>
-          </div>
-        )}
+      
+      {streamError && (
+        <Alert className="w-full z-30 xl:sticky xl:top-0">
+          <AlertTitle className="flex items-center gap-2">
+            <AlertTriangle size="16" />
+            Reconnecting
+          </AlertTitle>
+          <AlertDescription>{streamError}</AlertDescription>
+        </Alert>
+      )}
+
+      {/* Kanban + Panel Container - uses side-by-side layout on xl+ */}
+      <div className="flex-1 min-h-0 xl:flex">
         {/* Left Column - Kanban Section */}
         <div className={getKanbanSectionClasses(isPanelOpen, isFullscreen)}>
-        {tasks.length === 0 ? (
-          <div className="max-w-7xl mx-auto mt-8">
-            <Card>
-              <CardContent className="text-center py-8">
-                <p className="text-muted-foreground">
-                  No tasks found for this project.
-                </p>
-                <Button className="mt-4" onClick={handleCreateNewTask}>
-                  <Plus className="h-4 w-4 mr-2" />
-                  Create First Task
-                </Button>
-              </CardContent>
-            </Card>
-          </div>
-        ) : (
-          <div className="w-full h-full overflow-x-auto">
-            <TaskKanbanBoard
-              tasks={tasks}
-              searchQuery={searchQuery}
-              onDragEnd={handleDragEnd}
-              onEditTask={handleEditTask}
-              onDeleteTask={handleDeleteTask}
-              onDuplicateTask={handleDuplicateTask}
-              onViewTaskDetails={handleViewTaskDetails}
-              isPanelOpen={isPanelOpen}
-            />
-          </div>
-        )}
+          {tasks.length === 0 ? (
+            <div className="max-w-7xl mx-auto mt-8">
+              <Card>
+                <CardContent className="text-center py-8">
+                  <p className="text-muted-foreground">
+                    No tasks found for this project.
+                  </p>
+                  <Button className="mt-4" onClick={handleCreateNewTask}>
+                    <Plus className="h-4 w-4 mr-2" />
+                    Create First Task
+                  </Button>
+                </CardContent>
+              </Card>
+            </div>
+          ) : (
+            <div className="w-full h-full overflow-x-auto">
+              <TaskKanbanBoard
+                tasks={tasks}
+                searchQuery={searchQuery}
+                onDragEnd={handleDragEnd}
+                onEditTask={handleEditTask}
+                onDeleteTask={handleDeleteTask}
+                onDuplicateTask={handleDuplicateTask}
+                onViewTaskDetails={handleViewTaskDetails}
+                isPanelOpen={isPanelOpen}
+              />
+            </div>
+          )}
         </div>
 
         {/* Right Column - Task Details Panel */}
@@ -381,22 +378,11 @@ export function ProjectTasks() {
       />
 
       {/* Template Manager Dialog */}
-      <Dialog
+      <TaskTemplateManager
+        projectId={projectId!}
         open={isTemplateManagerOpen}
-        onOpenChange={setIsTemplateManagerOpen}
-      >
-        <DialogContent className="sm:max-w-[800px] max-h-[80vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Manage Templates</DialogTitle>
-          </DialogHeader>
-          <div className="py-4">
-            <TaskTemplateManager projectId={projectId} />
-          </div>
-          <DialogFooter>
-            <Button onClick={handleCloseTemplateManager}>Done</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        onClose={handleCloseTemplateManager}
+      />
     </div>
   );
 }
