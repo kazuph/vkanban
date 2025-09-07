@@ -1,5 +1,4 @@
-import { useCallback, useState } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import {
@@ -11,7 +10,8 @@ import {
 } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { ProjectForm } from './project-form';
+import { Project } from 'shared/types';
+import { showProjectForm } from '@/lib/modals';
 import { projectsApi } from '@/lib/api';
 import {
   AlertCircle,
@@ -32,13 +32,8 @@ interface ProjectDetailProps {
 
 export function ProjectDetail({ projectId, onBack }: ProjectDetailProps) {
   const navigate = useNavigate();
-  const queryClient = useQueryClient();
-  const { data: project, isLoading: loading } = useQuery({
-    queryKey: ['project', projectId],
-    queryFn: ({ signal }) => projectsApi.getById(projectId, signal),
-    staleTime: 30_000,
-  });
-  const [showEditForm, setShowEditForm] = useState(false);
+  const [project, setProject] = useState<Project | null>(null);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
   useKeyboardShortcuts({
@@ -46,9 +41,21 @@ export function ProjectDetail({ projectId, onBack }: ProjectDetailProps) {
     currentPath: `/projects/${projectId}`,
   });
 
-  const refetchProject = useCallback(() => {
-    queryClient.invalidateQueries({ queryKey: ['project', projectId] });
-  }, [queryClient, projectId]);
+  const fetchProject = useCallback(async () => {
+    setLoading(true);
+    setError('');
+
+    try {
+      const result = await projectsApi.getById(projectId);
+      setProject(result);
+    } catch (error) {
+      console.error('Failed to fetch project:', error);
+      // @ts-expect-error it is type ApiError
+      setError(error.message || 'Failed to load project');
+    }
+
+    setLoading(false);
+  }, [projectId]);
 
   const handleDelete = async () => {
     if (!project) return;
@@ -62,7 +69,6 @@ export function ProjectDetail({ projectId, onBack }: ProjectDetailProps) {
     try {
       await projectsApi.delete(projectId);
       onBack();
-      await queryClient.invalidateQueries({ queryKey: ['projects'] });
     } catch (error) {
       console.error('Failed to delete project:', error);
       // @ts-expect-error it is type ApiError
@@ -70,10 +76,20 @@ export function ProjectDetail({ projectId, onBack }: ProjectDetailProps) {
     }
   };
 
-  const handleEditSuccess = () => {
-    setShowEditForm(false);
-    refetchProject();
+  const handleEditClick = async () => {
+    try {
+      const result = await showProjectForm({ project });
+      if (result === 'saved') {
+        fetchProject();
+      }
+    } catch (error) {
+      // User cancelled - do nothing
+    }
   };
+
+  useEffect(() => {
+    fetchProject();
+  }, [fetchProject]);
 
   if (loading) {
     return (
@@ -132,7 +148,7 @@ export function ProjectDetail({ projectId, onBack }: ProjectDetailProps) {
             <CheckSquare className="mr-2 h-4 w-4" />
             View Tasks
           </Button>
-          <Button variant="outline" onClick={() => setShowEditForm(true)}>
+          <Button variant="outline" onClick={handleEditClick}>
             <Edit className="mr-2 h-4 w-4" />
             Edit
           </Button>
@@ -223,13 +239,6 @@ export function ProjectDetail({ projectId, onBack }: ProjectDetailProps) {
           </CardContent>
         </Card>
       </div>
-
-      <ProjectForm
-        open={showEditForm}
-        onClose={() => setShowEditForm(false)}
-        onSuccess={handleEditSuccess}
-        project={project}
-      />
     </div>
   );
 }

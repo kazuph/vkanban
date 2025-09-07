@@ -18,37 +18,37 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { useCallback, useEffect, useState } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
 import { attemptsApi } from '@/lib/api.ts';
-import { ProvidePatDialog } from '@/components/ProvidePatDialog';
-import { GitHubLoginDialog } from '@/components/GitHubLoginDialog';
-import { GitHubServiceError } from 'shared/types';
-import { useCreatePRDialog } from '@/contexts/create-pr-dialog-context';
-import { useProjectBranches } from '@/hooks';
 
-function CreatePrDialog() {
-  const { isOpen, data, closeCreatePRDialog } = useCreatePRDialog();
-  const queryClient = useQueryClient();
+import {
+  GitHubServiceError,
+  TaskAttempt,
+  TaskWithAttemptStatus,
+} from 'shared/types';
+import { useProjectBranches } from '@/hooks';
+import NiceModal, { useModal } from '@ebay/nice-modal-react';
+const CreatePrDialog = NiceModal.create(() => {
+  const modal = useModal();
+  const data = modal.args as
+    | { attempt: TaskAttempt; task: TaskWithAttemptStatus; projectId: string }
+    | undefined;
   const [prTitle, setPrTitle] = useState('');
   const [prBody, setPrBody] = useState('');
   const [prBaseBranch, setPrBaseBranch] = useState('main');
-  const [showPatDialog, setShowPatDialog] = useState(false);
-  const [patDialogError, setPatDialogError] = useState<string | null>(null);
-  const [showGitHubLoginDialog, setShowGitHubLoginDialog] = useState(false);
   const [creatingPR, setCreatingPR] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // Fetch branches when dialog opens
   const { data: branches = [], isLoading: branchesLoading } =
-    useProjectBranches(isOpen ? data?.projectId : undefined);
+    useProjectBranches(modal.visible ? data?.projectId : undefined);
 
   useEffect(() => {
-    if (isOpen && data) {
+    if (modal.visible && data) {
       setPrTitle(`${data.task.title} (vibe-kanban)`);
       setPrBody(data.task.description || '');
       setError(null); // Reset error when opening
     }
-  }, [isOpen, data]);
+  }, [modal.visible, data]);
 
   const handleConfirmCreatePR = useCallback(async () => {
     if (!data?.projectId || !data?.attempt.id) return;
@@ -64,31 +64,26 @@ function CreatePrDialog() {
     if (result.success) {
       setError(null); // Clear any previous errors on success
       window.open(result.data, '_blank');
-      // Proactively refresh branch status so UI flips to Open PR/Push immediately
-      if (data?.attempt.id) {
-        queryClient.invalidateQueries({ queryKey: ['branchStatus', data.attempt.id] });
-      }
       // Reset form and close dialog
       setPrTitle('');
       setPrBody('');
       setPrBaseBranch('main');
-      closeCreatePRDialog();
+      modal.hide();
     } else {
       if (result.error) {
-        closeCreatePRDialog();
+        modal.hide();
         switch (result.error) {
           case GitHubServiceError.TOKEN_INVALID:
-            setShowGitHubLoginDialog(true);
+            NiceModal.show('github-login');
             break;
           case GitHubServiceError.INSUFFICIENT_PERMISSIONS:
-            setPatDialogError(null);
-            setShowPatDialog(true);
+            NiceModal.show('provide-pat');
             break;
           case GitHubServiceError.REPO_NOT_FOUND_OR_NO_ACCESS:
-            setPatDialogError(
-              'Your token does not have access to this repository, or the repository does not exist. Please check the repository URL and/or provide a Personal Access Token with access.'
-            );
-            setShowPatDialog(true);
+            NiceModal.show('provide-pat', {
+              errorMessage:
+                'Your token does not have access to this repository, or the repository does not exist. Please check the repository URL and/or provide a Personal Access Token with access.',
+            });
             break;
         }
       } else if (result.message) {
@@ -98,30 +93,22 @@ function CreatePrDialog() {
       }
     }
     setCreatingPR(false);
-  }, [
-    data,
-    prBaseBranch,
-    prBody,
-    prTitle,
-    closeCreatePRDialog,
-    setPatDialogError,
-    queryClient,
-  ]);
+  }, [data, prBaseBranch, prBody, prTitle, modal]);
 
   const handleCancelCreatePR = useCallback(() => {
-    closeCreatePRDialog();
+    modal.hide();
     // Reset form to empty state
     setPrTitle('');
     setPrBody('');
     setPrBaseBranch('main');
-  }, [closeCreatePRDialog]);
+  }, [modal]);
 
   // Don't render if no data
   if (!data) return null;
 
   return (
     <>
-      <Dialog open={isOpen} onOpenChange={() => handleCancelCreatePR()}>
+      <Dialog open={modal.visible} onOpenChange={() => handleCancelCreatePR()}>
         <DialogContent className="sm:max-w-[525px]">
           <DialogHeader>
             <DialogTitle>Create GitHub Pull Request</DialogTitle>
@@ -202,22 +189,9 @@ function CreatePrDialog() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
-      <ProvidePatDialog
-        open={showPatDialog}
-        onOpenChange={(open) => {
-          setShowPatDialog(open);
-          if (!open) setPatDialogError(null);
-        }}
-        errorMessage={patDialogError || undefined}
-      />
-
-      <GitHubLoginDialog
-        open={showGitHubLoginDialog}
-        onOpenChange={setShowGitHubLoginDialog}
-      />
     </>
   );
-}
+});
 
+export { CreatePrDialog as CreatePRDialog };
 export default CreatePrDialog;

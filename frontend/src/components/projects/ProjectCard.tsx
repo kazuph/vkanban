@@ -21,29 +21,29 @@ import {
   Trash2,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { useQueryClient } from '@tanstack/react-query';
-import { projectsApi } from '@/lib/api.ts';
 import { Project } from 'shared/types';
 import { useEffect, useRef } from 'react';
+import { useOpenProjectInEditor } from '@/hooks/useOpenProjectInEditor';
+import { projectsApi } from '@/lib/api';
 
 type Props = {
   project: Project;
   isFocused: boolean;
+  fetchProjects: () => void;
   setError: (error: string) => void;
-  setEditingProject: (project: Project) => void;
-  setShowForm: (show: boolean) => void;
+  onEdit: (project: Project) => void;
 };
 
 function ProjectCard({
   project,
   isFocused,
+  fetchProjects,
   setError,
-  setEditingProject,
-  setShowForm,
+  onEdit,
 }: Props) {
   const navigate = useNavigate();
-  const queryClient = useQueryClient();
   const ref = useRef<HTMLDivElement>(null);
+  const handleOpenInEditor = useOpenProjectInEditor(project);
 
   useEffect(() => {
     if (isFocused && ref.current) {
@@ -62,7 +62,7 @@ function ProjectCard({
 
     try {
       await projectsApi.delete(id);
-      await queryClient.invalidateQueries({ queryKey: ['projects'] });
+      fetchProjects();
     } catch (error) {
       console.error('Failed to delete project:', error);
       setError('Failed to delete project');
@@ -70,17 +70,11 @@ function ProjectCard({
   };
 
   const handleEdit = (project: Project) => {
-    setEditingProject(project);
-    setShowForm(true);
+    onEdit(project);
   };
 
-  const handleOpenInIDE = async (projectId: string) => {
-    try {
-      await projectsApi.openEditor(projectId);
-    } catch (error) {
-      console.error('Failed to open project in IDE:', error);
-      setError('Failed to open project in IDE');
-    }
+  const handleOpenInIDE = () => {
+    handleOpenInEditor();
   };
 
   return (
@@ -114,7 +108,7 @@ function ProjectCard({
                 <DropdownMenuItem
                   onClick={(e) => {
                     e.stopPropagation();
-                    handleOpenInIDE(project.id);
+                    handleOpenInIDE();
                   }}
                 >
                   <FolderOpen className="mr-2 h-4 w-4" />

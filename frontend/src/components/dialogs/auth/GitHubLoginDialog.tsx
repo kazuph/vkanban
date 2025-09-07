@@ -6,23 +6,19 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from './ui/dialog';
-import { Button } from './ui/button';
-import { useConfig } from './config-provider';
+} from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { useUserSystem } from '@/components/config-provider';
 import { Check, Clipboard, Github } from 'lucide-react';
-import { Loader } from './ui/loader';
-import { githubAuthApi } from '../lib/api';
+import { Loader } from '@/components/ui/loader';
+import { githubAuthApi } from '@/lib/api';
 import { DeviceFlowStartResponse, DevicePollStatus } from 'shared/types';
-import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import NiceModal, { useModal } from '@ebay/nice-modal-react';
 
-export function GitHubLoginDialog({
-  open,
-  onOpenChange,
-}: {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-}) {
-  const { config, loading, githubTokenInvalid, reloadSystem } = useConfig();
+const GitHubLoginDialog = NiceModal.create(() => {
+  const modal = useModal();
+  const { config, loading, githubTokenInvalid, reloadSystem } = useUserSystem();
   const [fetching, setFetching] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [deviceState, setDeviceState] =
@@ -70,7 +66,7 @@ export function GitHubLoginDialog({
               setDeviceState(null);
               setError(null);
               await reloadSystem();
-              onOpenChange(false);
+              modal.resolve();
               break;
             case DevicePollStatus.AUTHORIZATION_PENDING:
               timer = setTimeout(poll, deviceState.interval * 1000);
@@ -101,7 +97,6 @@ export function GitHubLoginDialog({
   useEffect(() => {
     if (deviceState?.user_code) {
       copyToClipboard(deviceState.user_code);
-      window.open(deviceState.verification_uri, '_blank');
     }
   }, [deviceState?.user_code, deviceState?.verification_uri]);
 
@@ -136,7 +131,7 @@ export function GitHubLoginDialog({
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={modal.visible} onOpenChange={modal.resolve}>
       <DialogContent>
         <DialogHeader>
           <div className="flex items-center gap-3">
@@ -167,7 +162,7 @@ export function GitHubLoginDialog({
               </CardContent>
             </Card>
             <DialogFooter>
-              <Button onClick={() => onOpenChange(false)} className="w-full">
+              <Button onClick={() => modal.resolve()} className="w-full">
                 Close
               </Button>
             </DialogFooter>
@@ -241,7 +236,7 @@ export function GitHubLoginDialog({
             )}
 
             <DialogFooter>
-              <Button variant="outline" onClick={() => onOpenChange(false)}>
+              <Button variant="outline" onClick={() => modal.resolve()}>
                 Skip
               </Button>
             </DialogFooter>
@@ -294,7 +289,7 @@ export function GitHubLoginDialog({
             <DialogFooter className="gap-3 flex-col sm:flex-row">
               <Button
                 variant="outline"
-                onClick={() => onOpenChange(false)}
+                onClick={() => modal.resolve()}
                 className="flex-1"
               >
                 Skip
@@ -313,4 +308,6 @@ export function GitHubLoginDialog({
       </DialogContent>
     </Dialog>
   );
-}
+});
+
+export { GitHubLoginDialog };

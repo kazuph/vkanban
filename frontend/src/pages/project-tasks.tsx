@@ -5,12 +5,11 @@ import { Card, CardContent } from '@/components/ui/card';
 import { AlertTriangle, Plus } from 'lucide-react';
 import { Loader } from '@/components/ui/loader';
 import { projectsApi, tasksApi, attemptsApi } from '@/lib/api';
-import { useTaskDialog } from '@/contexts/task-dialog-context';
-import { ProjectForm } from '@/components/projects/project-form';
-import { TaskTemplateManager } from '@/components/TaskTemplateManager';
+import { openTaskForm } from '@/lib/openTaskForm';
 import { useKeyboardShortcuts } from '@/lib/keyboard-shortcuts';
 import { useSearch } from '@/contexts/search-context';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
+
 import {
   getKanbanSectionClasses,
   getMainContainerClasses,
@@ -18,13 +17,13 @@ import {
 
 import TaskKanbanBoard from '@/components/tasks/TaskKanbanBoard';
 import { TaskDetailsPanel } from '@/components/tasks/TaskDetailsPanel';
-import DeleteTaskConfirmationDialog from '@/components/tasks/DeleteTaskConfirmationDialog';
 import type { TaskWithAttemptStatus, Project, TaskAttempt } from 'shared/types';
 import type { DragEndEvent } from '@/components/ui/shadcn-io/kanban';
 import { Breadcrumb } from '@/components/ui/breadcrumb';
 import { Link } from 'react-router-dom';
 import { useProjectTasks } from '@/hooks/useProjectTasks';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import NiceModal from '@ebay/nice-modal-react';
 
 type Task = TaskWithAttemptStatus;
 
@@ -36,26 +35,35 @@ export function ProjectTasks() {
   }>();
   const navigate = useNavigate();
   const location = useLocation();
-  const queryClient = useQueryClient();
 
   // Projects State
   const [project, setProject] = useState<Project | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [isProjectSettingsOpen, setIsProjectSettingsOpen] = useState(false);
 
-  // Task dialog management
-  const { openCreate, openEdit } = useTaskDialog();
+  // Helper functions to open task forms
+  const handleCreateTask = () => {
+    if (project?.id) {
+      openTaskForm({ projectId: project.id });
+    }
+  };
 
-  // Template management state
-  const [isTemplateManagerOpen, setIsTemplateManagerOpen] = useState(false);
+  const handleEditTask = (task: Task) => {
+    if (project?.id) {
+      openTaskForm({ projectId: project.id, task });
+    }
+  };
+
+  const handleDuplicateTask = (task: Task) => {
+    if (project?.id) {
+      openTaskForm({ projectId: project.id, initialTask: task });
+    }
+  };
+  const { query: searchQuery } = useSearch();
 
   // Panel state
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [isPanelOpen, setIsPanelOpen] = useState(false);
-
-  // Task deletion state
-  const [taskToDelete, setTaskToDelete] = useState<Task | null>(null);
 
   // Fullscreen state from pathname
   const isFullscreen = location.pathname.endsWith('/full');
@@ -96,9 +104,6 @@ export function ProjectTasks() {
     tasksById,
   } = useProjectTasks(projectId!);
 
-  // Search query from search context
-  const { searchQuery } = useSearch();
-
   // Keyboard shortcuts
   useKeyboardShortcuts({
     'Ctrl+N': () => handleCreateNewTask(),
@@ -106,31 +111,8 @@ export function ProjectTasks() {
   });
 
   const handleCreateNewTask = useCallback(() => {
-    if (!projectId) return;
-    openCreate(projectId);
-  }, [openCreate, projectId]);
-
-  const handleDragEnd = useCallback(
-    async (event: DragEndEvent) => {
-      const { active, over } = event;
-      if (!over || active.id === over.id) return;
-
-      const task = tasks.find((t) => t.id === active.id);
-      if (!task) return;
-
-      // Handle column drop
-      if (over.id !== task.status) {
-        try {
-          await tasksApi.update(task.id, { status: over.id as any });
-          queryClient.invalidateQueries({ queryKey: ['projectTasks'] });
-        } catch (error) {
-          console.error('Failed to update task status:', error);
-          setError('Failed to update task status');
-        }
-      }
-    },
-    [tasks, queryClient]
-  );
+    handleCreateTask();
+  }, [handleCreateTask]);
 
   const fetchProject = useCallback(async () => {
     if (!projectId) return;
@@ -147,36 +129,47 @@ export function ProjectTasks() {
     }
   }, [projectId]);
 
-  const handleCloseTemplateManager = useCallback(() => {
-    setIsTemplateManagerOpen(false);
-  }, []);
+  const handleClosePanel = useCallback(() => {
+    // setIsPanelOpen(false);
+    // setSelectedTask(null);
+    // Remove task ID from URL when closing panel
+    navigate(`/projects/${projectId}/tasks`, { replace: true });
+  }, [projectId, navigate]);
 
   const handleDeleteTask = useCallback(
     (taskId: string) => {
       const task = tasksById[taskId];
       if (task) {
-        setTaskToDelete(task);
+        NiceModal.show('delete-task-confirmation', {
+          task,
+          projectId: projectId!,
+        })
+          .then(() => {
+            // Task was deleted, close panel if this task was selected
+            if (selectedTask?.id === taskId) {
+              handleClosePanel();
+            }
+          })
+          .catch(() => {
+            // Modal was cancelled - do nothing
+          });
       }
     },
-    [tasksById]
+    [tasksById, projectId, selectedTask, handleClosePanel]
   );
 
-  const handleEditTask = useCallback(
+  const handleEditTaskCallback = useCallback(
     (task: Task) => {
-      openEdit(task);
+      handleEditTask(task);
     },
-    [openEdit]
+    [handleEditTask]
   );
 
-  const handleDuplicateTask = useCallback(
+  const handleDuplicateTaskCallback = useCallback(
     (task: Task) => {
-      openCreate(projectId!, {
-        title: `${task.title} (Copy)`,
-        description: task.description || '',
-        status: task.status,
-      });
+      handleDuplicateTask(task);
     },
-    [openCreate, projectId]
+    [handleDuplicateTask]
   );
 
   const handleViewTaskDetails = useCallback(
@@ -187,18 +180,42 @@ export function ProjectTasks() {
     []
   );
 
-  const handleClosePanel = useCallback(() => {
-    setIsPanelOpen(false);
-    setSelectedTask(null);
-    // Navigate back to project level (remove task/attempt from URL)
-    navigate(`/projects/${projectId}`, { replace: true });
-  }, [navigate, projectId]);
+  const handleDragEnd = useCallback(
+    async (event: DragEndEvent) => {
+      const { active, over } = event;
+      if (!over || !active.data.current) return;
 
-  const handleProjectSettingsSuccess = useCallback(() => {
-    setIsProjectSettingsOpen(false);
-    fetchProject();
-  }, [fetchProject]);
+      const draggedTaskId = active.id as string;
+      const newStatus = over.id as Task['status'];
+      const task = tasksById[draggedTaskId];
+      if (!task || task.status === newStatus) return;
 
+      try {
+        await tasksApi.update(draggedTaskId, {
+          title: task.title,
+          description: task.description,
+          status: newStatus,
+          parent_task_attempt: task.parent_task_attempt,
+          image_ids: null,
+        });
+        // UI will update via SSE stream
+      } catch (err) {
+        setError('Failed to update task status');
+      }
+    },
+    [tasksById]
+  );
+
+  // Setup keyboard shortcuts
+  useKeyboardShortcuts({
+    navigate,
+    currentPath: window.location.pathname,
+    hasOpenDialog: false,
+    closeDialog: () => {},
+    onC: handleCreateNewTask,
+  });
+
+  // Initialize project when projectId changes
   useEffect(() => {
     if (projectId) {
       fetchProject();
@@ -229,8 +246,6 @@ export function ProjectTasks() {
       fetchProject();
     }
   }, [project, projectId, tasks.length, fetchProject]);
-
-  // Remove legacy direct-navigation handler; live sync above covers this
 
   if (isLoading) {
     return <Loader message="Loading tasks..." size={32} className="py-8" />;
@@ -316,9 +331,9 @@ export function ProjectTasks() {
                 tasks={tasks}
                 searchQuery={searchQuery}
                 onDragEnd={handleDragEnd}
-                onEditTask={handleEditTask}
+                onEditTask={handleEditTaskCallback}
                 onDeleteTask={handleDeleteTask}
-                onDuplicateTask={handleDuplicateTask}
+                onDuplicateTask={handleDuplicateTaskCallback}
                 onViewTaskDetails={handleViewTaskDetails}
                 isPanelOpen={isPanelOpen}
               />
@@ -333,9 +348,8 @@ export function ProjectTasks() {
             projectHasDevScript={!!project?.dev_script}
             projectId={projectId!}
             onClose={handleClosePanel}
-            onEditTask={handleEditTask}
+            onEditTask={handleEditTaskCallback}
             onDeleteTask={handleDeleteTask}
-            isDialogOpen={isProjectSettingsOpen}
             isFullScreen={isFullscreen}
             setFullScreen={
               selectedAttempt
@@ -352,37 +366,6 @@ export function ProjectTasks() {
           />
         )}
       </div>
-
-      {/* Dialogs - rendered at main container level to avoid stacking issues */}
-
-      {taskToDelete && (
-        <DeleteTaskConfirmationDialog
-          key={taskToDelete.id}
-          task={taskToDelete}
-          projectId={projectId!}
-          onClose={() => setTaskToDelete(null)}
-          onDeleted={() => {
-            setTaskToDelete(null);
-            if (selectedTask?.id === taskToDelete.id) {
-              handleClosePanel();
-            }
-          }}
-        />
-      )}
-
-      <ProjectForm
-        open={isProjectSettingsOpen}
-        onClose={() => setIsProjectSettingsOpen(false)}
-        onSuccess={handleProjectSettingsSuccess}
-        project={project}
-      />
-
-      {/* Template Manager Dialog */}
-      <TaskTemplateManager
-        projectId={projectId!}
-        open={isTemplateManagerOpen}
-        onClose={handleCloseTemplateManager}
-      />
     </div>
   );
 }

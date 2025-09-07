@@ -8,30 +8,54 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Project } from 'shared/types';
-import { ProjectForm } from './project-form';
+import { showProjectForm } from '@/lib/modals';
 import { projectsApi } from '@/lib/api';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertCircle, Loader2, Plus } from 'lucide-react';
 import ProjectCard from '@/components/projects/ProjectCard.tsx';
 
 export function ProjectList() {
   const navigate = useNavigate();
-  const queryClient = useQueryClient();
-  const { data: projects = [], isLoading } = useQuery({
-    queryKey: ['projects'],
-    queryFn: ({ signal }) => projectsApi.getAll(signal),
-    staleTime: 10_000,
-  });
-  const [showForm, setShowForm] = useState(false);
-  const [editingProject, setEditingProject] = useState<Project | null>(null);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [focusedProjectId, setFocusedProjectId] = useState<string | null>(null);
   const [focusedColumn, setFocusedColumn] = useState<string | null>(null);
 
-  const handleFormSuccess = () => {
-    setShowForm(false);
-    setEditingProject(null);
-    queryClient.invalidateQueries({ queryKey: ['projects'] });
+  const fetchProjects = async () => {
+    setLoading(true);
+    setError('');
+
+    try {
+      const result = await projectsApi.getAll();
+      setProjects(result);
+    } catch (error) {
+      console.error('Failed to fetch projects:', error);
+      setError('Failed to fetch projects');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCreateProject = async () => {
+    try {
+      const result = await showProjectForm();
+      if (result === 'saved') {
+        fetchProjects();
+      }
+    } catch (error) {
+      // User cancelled - do nothing
+    }
+  };
+
+  const handleEditProject = async (project: Project) => {
+    try {
+      const result = await showProjectForm({ project });
+      if (result === 'saved') {
+        fetchProjects();
+      }
+    } catch (error) {
+      // User cancelled - do nothing
+    }
   };
 
   // Group projects by grid columns (3 columns for lg, 2 for md, 1 for sm)
@@ -87,7 +111,7 @@ export function ProjectList() {
 
   useKeyboardShortcuts({
     ignoreEscape: true,
-    onC: () => setShowForm(true),
+    onC: handleCreateProject,
     navigate,
     currentPath: '/projects',
   });
@@ -113,11 +137,12 @@ export function ProjectList() {
     return () => window.removeEventListener('resize', handleResize);
   }, [focusedProjectId, projects]);
 
-  // Initial load handled by useQuery
+  useEffect(() => {
+    fetchProjects();
+  }, []);
 
   return (
-    // Align left padding with the navbar (px-3 sm:px-4)
-    <div className="space-y-6 px-3 sm:px-4 py-8 h-full">
+    <div className="space-y-6 p-8 h-full">
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Projects</h1>
@@ -125,7 +150,7 @@ export function ProjectList() {
             Manage your projects and track their progress
           </p>
         </div>
-        <Button onClick={() => setShowForm(true)}>
+        <Button onClick={handleCreateProject}>
           <Plus className="mr-2 h-4 w-4" />
           Create Project
         </Button>
@@ -138,7 +163,7 @@ export function ProjectList() {
         </Alert>
       )}
 
-      {isLoading ? (
+      {loading ? (
         <div className="flex items-center justify-center py-12">
           <Loader2 className="mr-2 h-4 w-4 animate-spin" />
           Loading projects...
@@ -153,7 +178,7 @@ export function ProjectList() {
             <p className="mt-2 text-sm text-muted-foreground">
               Get started by creating your first project.
             </p>
-            <Button className="mt-4" onClick={() => setShowForm(true)}>
+            <Button className="mt-4" onClick={handleCreateProject}>
               <Plus className="mr-2 h-4 w-4" />
               Create your first project
             </Button>
@@ -167,22 +192,12 @@ export function ProjectList() {
               project={project}
               isFocused={focusedProjectId === project.id}
               setError={setError}
-              setEditingProject={setEditingProject}
-              setShowForm={setShowForm}
+              onEdit={handleEditProject}
+              fetchProjects={fetchProjects}
             />
           ))}
         </div>
       )}
-
-      <ProjectForm
-        open={showForm}
-        onClose={() => {
-          setShowForm(false);
-          setEditingProject(null);
-        }}
-        onSuccess={handleFormSuccess}
-        project={editingProject}
-      />
     </div>
   );
 }
