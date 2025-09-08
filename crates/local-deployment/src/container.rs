@@ -757,6 +757,20 @@ impl ContainerService for LocalContainerService {
                 });
         }
 
+        // Copy .env* files for configured workspace directories (monorepo support)
+        if let Some(ws) = &project.workspace_dirs
+            && !ws.trim().is_empty()
+        {
+            self.copy_workspace_env_files(&project.git_repo_path, &worktree_path, ws)
+                .await
+                .unwrap_or_else(|e| {
+                    tracing::warn!(
+                        "Failed to copy workspace .env files to worktree: {}",
+                        e
+                    );
+                });
+        }
+
         // Copy task images from cache to worktree
         if let Err(e) = self
             .image_service
@@ -1114,9 +1128,75 @@ impl ContainerService for LocalContainerService {
         }
         Ok(())
     }
+
 }
 
 impl LocalContainerService {
+    /// Copy .env* files for each workspace directory from the source repo to the worktree
+    async fn copy_workspace_env_files(
+        &self,
+        source_dir: &Path,
+        target_dir: &Path,
+        workspace_dirs: &str,
+    ) -> Result<(), ContainerError> {
+        let dirs: Vec<&str> = workspace_dirs
+            .split(',')
+            .map(|s| s.trim())
+            .filter(|s| !s.is_empty())
+            .collect();
+
+        for d in dirs {
+            let src_ws = source_dir.join(d);
+            let dst_ws = target_dir.join(d);
+            if !src_ws.exists() || !src_ws.is_dir() {
+                tracing::debug!("Workspace dir {:?} does not exist; skipping .env copy", src_ws);
+                continue;
+            }
+
+            if !dst_ws.exists() {
+                std::fs::create_dir_all(&dst_ws).map_err(|e| {
+                    ContainerError::Other(anyhow!(
+                        "Failed to create workspace dir {:?}: {}",
+                        dst_ws, e
+                    ))
+                })?;
+            }
+
+            // Copy files matching .env*
+            let read_dir = std::fs::read_dir(&src_ws).map_err(|e| {
+                ContainerError::Other(anyhow!(
+                    "Failed to read workspace dir {:?}: {}",
+                    src_ws, e
+                ))
+            })?;
+
+            for entry in read_dir {
+                let entry = entry.map_err(|e| {
+                    ContainerError::Other(anyhow!("Failed to read dir entry: {}", e))
+                })?;
+                let path = entry.path();
+                if path.is_file() {
+                    if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+                        if name == ".env" || name.starts_with(".env.") {
+                            let target = dst_ws.join(name);
+                            std::fs::copy(&path, &target).map_err(|e| {
+                                ContainerError::Other(anyhow!(
+                                    "Failed to copy {:?} to {:?}: {}",
+                                    path, target, e
+                                ))
+                            })?;
+                            tracing::info!(
+                                "Copied workspace env file {:?} to worktree",
+                                target
+                            );
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(())
+    }
     /// Extract the last assistant message from the MsgStore history
     fn extract_last_assistant_message(&self, exec_id: &Uuid) -> Option<String> {
         // Get the MsgStore for this execution

@@ -522,7 +522,29 @@ pub trait ContainerService {
         );
         let prompt = ImageService::canonicalise_image_paths(&task.to_prompt(), &worktree_path);
 
+        // Helper: if workspace_dirs configured, run the script in each dir sequentially
+        let make_workspace_script = |base_script: &str, ws: Option<&String>| -> String {
+            if let Some(ws_csv) = ws {
+                let dirs: Vec<&str> = ws_csv
+                    .split(',')
+                    .map(|s| s.trim())
+                    .filter(|s| !s.is_empty())
+                    .collect();
+                if !dirs.is_empty() {
+                    // Compose one shell script that runs the user's script in each dir
+                    // using subshells to isolate cd's; stop on first failure.
+                    let mut parts: Vec<String> = Vec::new();
+                    for d in dirs {
+                        parts.push(format!("(cd \"{}\" && {{ {} ; }})", d, base_script));
+                    }
+                    return format!("set -e\n{}", parts.join(" && \n"));
+                }
+            }
+            base_script.to_string()
+        };
+
         let cleanup_action = project.cleanup_script.map(|script| {
+            let script = make_workspace_script(&script, project.workspace_dirs.as_ref());
             Box::new(ExecutorAction::new(
                 ExecutorActionType::ScriptRequest(ScriptRequest {
                     script,
@@ -535,6 +557,7 @@ pub trait ContainerService {
 
         // Choose whether to execute the setup_script or coding agent first
         let execution_process = if let Some(setup_script) = project.setup_script {
+            let setup_script = make_workspace_script(&setup_script, project.workspace_dirs.as_ref());
             let executor_action = ExecutorAction::new(
                 ExecutorActionType::ScriptRequest(ScriptRequest {
                     script: setup_script,
