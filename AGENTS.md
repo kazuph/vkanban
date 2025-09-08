@@ -15,6 +15,8 @@
 - `/data` ↔ `./data`（アセット、DB、設定、画像キャッシュ）
 - `/var/tmp/vibe-kanban` ↔ `./var_tmp_vkanban`（ワークツリー/一時ファイル）
 - `/repos/<org>/<repo>` ↔ `現在の Git リポジトリ`（pnpm dev と同じプロジェクトを参照）
+- `${HOME}` ↔ `${HOME}`（ホストのホームディレクトリを同一絶対パスでマウント）
+  - コンテナ内の `HOME` 環境変数もホストと同じ `${HOME}` に設定。
 
   - `make run`/`make start` は、実行中の repo を自動的に `/repos/<org>/<repo>` にマウントします。
   - 自動検出: `REPO_ABS_PATH` は `git rev-parse --show-toplevel`、`REPO_CANON` は `git remote origin` から `<org>/<repo>` を推定。
@@ -23,6 +25,7 @@
     - `REPO_ABS_PATH` 既定 `.`（compose.yml のあるディレクトリ）
     - `REPO_CANON` 既定 `kazuph/vkanban`
     - 別リポジトリを使う場合は、上記 2 変数を環境に指定して実行してください。
+  - 補足: `${HOME}` を同一パスでマウントしているため、Docker 実行時でもホストと同じ絶対パス（例: `/Users/<you>/...` や `/home/<you>/...`）のリポジトリを参照できます。これにより、`pnpm dev` と `make run`（Docker）の参照パス差異を解消しています。
 
 ### よくある問題と対処
 - PermissionDenied で起動失敗: `./data` 配下のファイルが root 所有。
@@ -41,6 +44,7 @@
 - コンテナはホストの `${UID}:${GID}` で動作。`./data` は常に自ユーザー所有に維持。
 - Rust のビルドが重いため、通常は `--no-cache` を使わない。
 - ローカル実行用のディレクトリは Git 追跡外: `data/`, `var_tmp_vkanban/`（.gitignore 済み）
+  
 ## Upstream Sync 2025-09-08
 
 - 取り込み元: `BloopAI/vibe-kanban@main`（v0.0.78 相当）
