@@ -13,6 +13,11 @@
 ### マウント/永続ディレクトリ
 - `/data` ↔ `./data`（アセット、DB、設定、画像キャッシュ）
 - `/var/tmp/vibe-kanban` ↔ `./var_tmp_vkanban`（ワークツリー/一時ファイル）
+- `/repos/<org>/<repo>` ↔ `現在の Git リポジトリ`（pnpm dev と同じプロジェクトを参照）
+
+  - `make run`/`make start` は、実行中の repo を自動的に `/repos/<org>/<repo>` にマウントします。
+  - 自動検出: `REPO_ABS_PATH` は `git rev-parse --show-toplevel`、`REPO_CANON` は `git remote origin` から `<org>/<repo>` を推定。
+  - 明示指定も可能: `REPO_ABS_PATH=/path/to/project REPO_CANON=myorg/myrepo make run`
 
 ### よくある問題と対処
 - PermissionDenied で起動失敗: `./data` 配下のファイルが root 所有。

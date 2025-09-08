@@ -23,6 +23,11 @@ services:
       - ./data:/data
       # Persist worktrees and temp files used by the app (Linux path inside container)
       - ./var_tmp_vkanban:/var/tmp/vibe-kanban
-      # Map host repo so that project path "kazuph/vkanban" resolves under /repos
-      - /home/kazuph/src/github.com/kazuph/vkanban:/repos/kazuph/vkanban
+      # Map the host project used during `pnpm dev` into /repos/<org>/<repo>
+      #
+      # REPO_ABS_PATH: absolute path to your local project root (auto-provided by Makefile)
+      # REPO_CANON:     canonical path "<org>/<repo>" (auto-provided by Makefile)
+      #
+      # Example: /Users/you/src/github.com/you/vkanban -> /repos/you/vkanban
+      - ${REPO_ABS_PATH}:/repos/${REPO_CANON}
     restart: always
