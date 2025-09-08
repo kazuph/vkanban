@@ -40,6 +40,7 @@ export const ProjectFormDialog = NiceModal.create<ProjectFormDialogProps>(
     const [repoMode, setRepoMode] = useState<'existing' | 'new'>('existing');
     const [parentPath, setParentPath] = useState('');
     const [folderName, setFolderName] = useState('');
+    const [workspaceDirs, setWorkspaceDirs] = useState(project?.workspace_dirs ?? '');
 
     const isEditing = !!project;
 
@@ -59,6 +60,7 @@ export const ProjectFormDialog = NiceModal.create<ProjectFormDialogProps>(
         setDevScript('');
         setCleanupScript('');
         setCopyFiles('');
+        setWorkspaceDirs('');
       }
     }, [project]);
 
@@ -75,28 +77,10 @@ export const ProjectFormDialog = NiceModal.create<ProjectFormDialogProps>(
 
     // Handle direct project creation from repo selection
     const handleDirectCreate = async (path: string, suggestedName: string) => {
-      setError('');
-      setLoading(true);
-
-      try {
-        const createData: CreateProject = {
-          name: suggestedName,
-          git_repo_path: path,
-          use_existing_repo: true,
-          setup_script: null,
-          dev_script: null,
-          cleanup_script: null,
-          copy_files: null,
-        };
-
-        await projectsApi.create(createData);
-        modal.resolve('saved' as ProjectFormDialogResult);
-        modal.hide();
-      } catch (error) {
-        setError(error instanceof Error ? error.message : 'An error occurred');
-      } finally {
-        setLoading(false);
-      }
+      // In the new flow, selecting a repo pre-fills fields; creation happens via Save/Create button.
+      setRepoMode('existing');
+      handleGitRepoPathChange(path);
+      setName(suggestedName);
     };
 
     const handleSubmit = async (e: React.FormEvent) => {
@@ -118,6 +102,11 @@ export const ProjectFormDialog = NiceModal.create<ProjectFormDialogProps>(
         const finalName =
           name.trim() || generateProjectNameFromPath(finalGitRepoPath);
 
+        if (!workspaceDirs.trim()) {
+          setError('Workspace directories are required (comma-separated).');
+          return;
+        }
+
         if (isEditing) {
           const updateData: UpdateProject = {
             name: finalName,
@@ -126,6 +115,7 @@ export const ProjectFormDialog = NiceModal.create<ProjectFormDialogProps>(
             dev_script: devScript.trim() || null,
             cleanup_script: cleanupScript.trim() || null,
             copy_files: copyFiles.trim() || null,
+            workspace_dirs: workspaceDirs.trim() || null,
           };
 
           await projectsApi.update(project!.id, updateData);
@@ -139,6 +129,7 @@ export const ProjectFormDialog = NiceModal.create<ProjectFormDialogProps>(
             dev_script: null,
             cleanup_script: null,
             copy_files: null,
+            workspace_dirs: workspaceDirs.trim() || null,
           };
 
           await projectsApi.create(createData);
@@ -223,6 +214,8 @@ export const ProjectFormDialog = NiceModal.create<ProjectFormDialogProps>(
                     setCleanupScript={setCleanupScript}
                     copyFiles={copyFiles}
                     setCopyFiles={setCopyFiles}
+                    workspaceDirs={workspaceDirs}
+                    setWorkspaceDirs={setWorkspaceDirs}
                     error={error}
                     setError={setError}
                     projectId={project ? project.id : undefined}
@@ -230,7 +223,9 @@ export const ProjectFormDialog = NiceModal.create<ProjectFormDialogProps>(
                   <DialogFooter>
                     <Button
                       type="submit"
-                      disabled={loading || !gitRepoPath.trim()}
+                      disabled={
+                        loading || !gitRepoPath.trim() || !workspaceDirs.trim()
+                      }
                     >
                       {loading ? 'Saving...' : 'Save Changes'}
                     </Button>
@@ -244,41 +239,53 @@ export const ProjectFormDialog = NiceModal.create<ProjectFormDialogProps>(
               </TabsContent>
             </Tabs>
           ) : (
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <ProjectFormFields
-                isEditing={isEditing}
-                repoMode={repoMode}
-                setRepoMode={setRepoMode}
-                gitRepoPath={gitRepoPath}
-                handleGitRepoPathChange={handleGitRepoPathChange}
-                parentPath={parentPath}
-                setParentPath={setParentPath}
-                setFolderName={setFolderName}
-                setName={setName}
-                name={name}
-                setupScript={setupScript}
-                setSetupScript={setSetupScript}
-                devScript={devScript}
-                setDevScript={setDevScript}
-                cleanupScript={cleanupScript}
-                setCleanupScript={setCleanupScript}
-                copyFiles={copyFiles}
-                setCopyFiles={setCopyFiles}
-                error={error}
-                setError={setError}
-                projectId={undefined}
-                onCreateProject={handleDirectCreate}
-              />
-              {repoMode === 'new' && (
-                <DialogFooter>
-                  <Button
-                    type="submit"
-                    disabled={loading || !folderName.trim()}
-                  >
-                    {loading ? 'Creating...' : 'Create Project'}
-                  </Button>
-                </DialogFooter>
-              )}
+              <form onSubmit={handleSubmit} className="space-y-4">
+                <ProjectFormFields
+                  isEditing={isEditing}
+                  repoMode={repoMode}
+                  setRepoMode={setRepoMode}
+                  gitRepoPath={gitRepoPath}
+                  handleGitRepoPathChange={handleGitRepoPathChange}
+                  parentPath={parentPath}
+                  setParentPath={setParentPath}
+                  setFolderName={setFolderName}
+                  setName={setName}
+                  name={name}
+                  setupScript={setupScript}
+                  setSetupScript={setSetupScript}
+                  devScript={devScript}
+                  setDevScript={setDevScript}
+                  cleanupScript={cleanupScript}
+                  setCleanupScript={setCleanupScript}
+                  copyFiles={copyFiles}
+                  setCopyFiles={setCopyFiles}
+                  workspaceDirs={workspaceDirs}
+                  setWorkspaceDirs={setWorkspaceDirs}
+                  error={error}
+                  setError={setError}
+                  projectId={undefined}
+                  onCreateProject={handleDirectCreate}
+                />
+              <DialogFooter>
+                <Button
+                  type="submit"
+                  disabled={
+                    loading ||
+                    (repoMode === 'new'
+                      ? !folderName.trim()
+                      : !gitRepoPath.trim()) ||
+                    !workspaceDirs.trim()
+                  }
+                >
+                  {loading
+                    ? repoMode === 'new'
+                      ? 'Creating...'
+                      : 'Saving...'
+                    : repoMode === 'new'
+                      ? 'Create Project'
+                      : 'Create Project'}
+                </Button>
+              </DialogFooter>
             </form>
           )}
         </DialogContent>

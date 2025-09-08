@@ -994,53 +994,59 @@ pub async fn start_dev_server(
         .await?
         .ok_or(SqlxError::RowNotFound)?;
 
-    // Stop any existing dev servers for this project
-    let existing_dev_servers =
-        match ExecutionProcess::find_running_dev_servers_by_project(pool, project.id).await {
-            Ok(servers) => servers,
-            Err(e) => {
-                tracing::error!(
-                    "Failed to find running dev servers for project {}: {}",
-                    project.id,
-                    e
-                );
-                return Err(ApiError::TaskAttempt(TaskAttemptError::ValidationError(
-                    e.to_string(),
-                )));
-            }
-        };
-
-    for dev_server in existing_dev_servers {
-        tracing::info!(
-            "Stopping existing dev server {} for project {}",
-            dev_server.id,
-            project.id
-        );
-
-        if let Err(e) = deployment.container().stop_execution(&dev_server).await {
-            tracing::error!("Failed to stop dev server {}: {}", dev_server.id, e);
-        }
-    }
+    // Allow multiple dev servers (one per workspace). Do not stop existing.
 
     if let Some(dev_server) = project.dev_script {
-        // TODO: Derive script language from system config
-        let executor_action = ExecutorAction::new(
-            ExecutorActionType::ScriptRequest(ScriptRequest {
-                script: dev_server,
-                language: ScriptRequestLanguage::Bash,
-                context: ScriptContext::DevServer,
-            }),
-            None,
-        );
+        // If workspace_dirs configured, start a dev server in each dir concurrently
+        if let Some(ws_csv) = project.workspace_dirs.as_ref()
+            && !ws_csv.trim().is_empty()
+        {
+            let dirs: Vec<&str> = ws_csv
+                .split(',')
+                .map(|s| s.trim())
+                .filter(|s| !s.is_empty())
+                .collect();
 
-        deployment
-            .container()
-            .start_execution(
-                &task_attempt,
-                &executor_action,
-                &ExecutionProcessRunReason::DevServer,
-            )
-            .await?
+            for d in dirs {
+                let script = format!("cd \"{}\" && {{ {} ; }}", d, dev_server);
+                let executor_action = ExecutorAction::new(
+                    ExecutorActionType::ScriptRequest(ScriptRequest {
+                        script,
+                        language: ScriptRequestLanguage::Bash,
+                        context: ScriptContext::DevServer,
+                    }),
+                    None,
+                );
+
+                deployment
+                    .container()
+                    .start_execution(
+                        &task_attempt,
+                        &executor_action,
+                        &ExecutionProcessRunReason::DevServer,
+                    )
+                    .await?;
+            }
+        } else {
+            // Single dev server in repo root
+            let executor_action = ExecutorAction::new(
+                ExecutorActionType::ScriptRequest(ScriptRequest {
+                    script: dev_server,
+                    language: ScriptRequestLanguage::Bash,
+                    context: ScriptContext::DevServer,
+                }),
+                None,
+            );
+
+            deployment
+                .container()
+                .start_execution(
+                    &task_attempt,
+                    &executor_action,
+                    &ExecutionProcessRunReason::DevServer,
+                )
+                .await?;
+        }
     } else {
         return Ok(ResponseJson(ApiResponse::error(
             "No dev server script configured for this project",
