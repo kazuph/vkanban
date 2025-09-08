@@ -57,31 +57,16 @@ pub async fn create_project(
         cleanup_script,
         copy_files,
         use_existing_repo,
+        workspace_dirs,
     } = payload;
     tracing::debug!("Creating project '{}'", name);
 
     // Validate and setup git repository
     // Expand tilde in git repo path if present
-    let path = expand_tilde(&git_repo_path);
-    // Check if git repo path is already used by another project
-    match Project::find_by_git_repo_path(&deployment.db().pool, path.to_string_lossy().as_ref())
-        .await
-    {
-        Ok(Some(_)) => {
-            return Ok(ResponseJson(ApiResponse::error(
-                "A project with this git repository path already exists",
-            )));
-        }
-        Ok(None) => {
-            // Path is available, continue
-        }
-        Err(e) => {
-            return Err(ProjectError::GitRepoCheckFailed(e.to_string()).into());
-        }
-    }
+    let mut path = expand_tilde(&git_repo_path);
 
     if use_existing_repo {
-        // For existing repos, validate that the path exists and is a git repository
+        // For existing repos, validate that the path exists and points to a git repo
         if !path.exists() {
             return Ok(ResponseJson(ApiResponse::error(
                 "The specified path does not exist",
@@ -94,10 +79,18 @@ pub async fn create_project(
             )));
         }
 
+        // Accept subdirectories inside a git repository by discovering the repo root
         if !path.join(".git").exists() {
-            return Ok(ResponseJson(ApiResponse::error(
-                "The specified directory is not a git repository",
-            )));
+            match deployment.git().discover_repo_root(&path) {
+                Ok(root) => {
+                    path = root;
+                }
+                Err(_) => {
+                    return Ok(ResponseJson(ApiResponse::error(
+                        "The specified directory is not a git repository",
+                    )));
+                }
+            }
         }
 
         // Ensure existing repo has a main branch if it's empty
@@ -134,6 +127,21 @@ pub async fn create_project(
         }
     }
 
+    // Check if git repo path is already used by another project (after possible root discovery)
+    match Project::find_by_git_repo_path(&deployment.db().pool, path.to_string_lossy().as_ref())
+        .await
+    {
+        Ok(Some(_)) => {
+            return Ok(ResponseJson(ApiResponse::error(
+                "A project with this git repository path already exists",
+            )));
+        }
+        Ok(None) => {}
+        Err(e) => {
+            return Err(ProjectError::GitRepoCheckFailed(e.to_string()).into());
+        }
+    }
+
     match Project::create(
         &deployment.db().pool,
         &CreateProject {
@@ -144,6 +152,7 @@ pub async fn create_project(
             dev_script,
             cleanup_script,
             copy_files,
+            workspace_dirs,
         },
         id,
     )
@@ -184,14 +193,25 @@ pub async fn update_project(
         dev_script,
         cleanup_script,
         copy_files,
+        workspace_dirs,
     } = payload;
     // If git_repo_path is being changed, check if the new path is already used by another project
     let git_repo_path = if let Some(new_git_repo_path) = git_repo_path.map(|s| expand_tilde(&s))
         && new_git_repo_path != existing_project.git_repo_path
     {
+        // If a subdirectory inside a git repo is provided, normalize to repo root
+        let normalized_path = if !new_git_repo_path.join(".git").exists() {
+            match deployment.git().discover_repo_root(&new_git_repo_path) {
+                Ok(root) => root,
+                Err(_) => new_git_repo_path.clone(),
+            }
+        } else {
+            new_git_repo_path.clone()
+        };
+
         match Project::find_by_git_repo_path_excluding_id(
             &deployment.db().pool,
-            new_git_repo_path.to_string_lossy().as_ref(),
+            normalized_path.to_string_lossy().as_ref(),
             existing_project.id,
         )
         .await
@@ -201,7 +221,7 @@ pub async fn update_project(
                     "A project with this git repository path already exists",
                 )));
             }
-            Ok(None) => new_git_repo_path,
+            Ok(None) => normalized_path,
             Err(e) => {
                 tracing::error!("Failed to check for existing git repo path: {}", e);
                 return Err(StatusCode::INTERNAL_SERVER_ERROR);
@@ -220,6 +240,7 @@ pub async fn update_project(
         dev_script,
         cleanup_script,
         copy_files,
+        workspace_dirs,
     )
     .await
     {

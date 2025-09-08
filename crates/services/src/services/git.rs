@@ -99,6 +99,16 @@ impl GitService {
         Repository::open(repo_path).map_err(GitServiceError::from)
     }
 
+    /// Discover the working tree root of a git repository starting from `path`.
+    /// Accepts subdirectories that are inside a repository.
+    pub fn discover_repo_root(&self, path: &Path) -> Result<std::path::PathBuf, GitServiceError> {
+        let repo = Repository::discover(path)?;
+        let workdir = repo
+            .workdir()
+            .ok_or_else(|| GitServiceError::InvalidRepository("Bare repositories are not supported".into()))?;
+        Ok(workdir.to_path_buf())
+    }
+
     /// Ensure local (repo-scoped) identity exists for CLI commits.
     /// Sets user.name/email only if missing in the repo config.
     fn ensure_cli_commit_identity(&self, repo_path: &Path) -> Result<(), GitServiceError> {

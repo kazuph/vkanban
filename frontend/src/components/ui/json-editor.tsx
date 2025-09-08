@@ -5,7 +5,7 @@ import { linter } from '@codemirror/lint';
 import { indentOnInput } from '@codemirror/language';
 import { EditorView } from '@codemirror/view';
 import { useTheme } from '@/components/theme-provider';
-import { isDarkTheme } from '@/utils/theme';
+import { getActualTheme } from '@/utils/theme';
 import { cn } from '@/lib/utils';
 
 interface JSONEditorProps {
@@ -31,7 +31,7 @@ export const JSONEditor: React.FC<JSONEditorProps> = ({
 
   // Convert app theme to CodeMirror theme
   const getCodeMirrorTheme = () =>
-    isDarkTheme(theme) ? 'dark' : 'light';
+    getActualTheme(theme) === 'dark' ? 'dark' : 'light';
 
   // Avoid SSR errors
   if (typeof window === 'undefined') return null;

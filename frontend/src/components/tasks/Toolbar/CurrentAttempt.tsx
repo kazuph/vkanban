@@ -579,6 +579,7 @@ function CurrentAttempt({
                 </Button>
               )}
               <>
+                {/* Create/Push PR button */}
                 <Button
                   onClick={handlePRButtonClick}
                   disabled={
@@ -612,6 +613,25 @@ function CurrentAttempt({
                       ? 'Creating...'
                       : 'Create PR'}
                 </Button>
+
+                {/* Open PR button when there is an open PR and nothing to push */}
+                {mergeInfo.hasOpenPR &&
+                  (branchStatus.remote_commits_ahead ?? 0) === 0 && (
+                    <Button
+                      onClick={() => {
+                        const url = mergeInfo.openPR?.type === 'pr'
+                          ? mergeInfo.openPR.pr_info.url
+                          : undefined;
+                        if (url) window.open(url, '_blank');
+                      }}
+                      variant="outline"
+                      size="xs"
+                      className="border-blue-300 text-blue-700 hover:bg-blue-50 gap-1"
+                    >
+                      <ExternalLink className="h-3 w-3" />
+                      Open PR
+                    </Button>
+                  )}
                 <Button
                   onClick={handleMergeClick}
                   disabled={
