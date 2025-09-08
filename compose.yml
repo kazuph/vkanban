@@ -15,14 +15,21 @@ services:
       - HOST=0.0.0.0
       - PORT=8080
       - VIBE_KANBAN_ASSET_MODE=prod
-      - VIBE_KANBAN_ASSET_DIR=/data
+      # Point Docker to the same DB/config as pnpm dev (macOS App Support)
+      - "VIBE_KANBAN_ASSET_DIR=${HOME}/Library/Application Support/ai.bloop.vibe-kanban"
       - GIT_CONFIG_GLOBAL=/data/gitconfig
+      # Make container HOME equal to host HOME for consistent repo discovery
+      - HOME=${HOME}
       # 参考: UID/GID は docker compose 実行元の環境変数から展開されます
       # 例) `UID=$(id -u) GID=$(id -g) make run`
     volumes:
       - ./data:/data
       # Persist worktrees and temp files used by the app (Linux path inside container)
       - ./var_tmp_vkanban:/var/tmp/vibe-kanban
+      # Map the host user's home directory into the same absolute path in the container
+      # This allows the server in Docker to access the same project paths that
+      # `pnpm dev` (host) sees, e.g. /Users/<you>/... or /home/<you>/...
+      - ${HOME}:${HOME}
       # Map the host project used during `pnpm dev` into /repos/<org>/<repo>
       #
       # REPO_ABS_PATH: absolute path to your local project root (auto-provided by Makefile)

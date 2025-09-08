@@ -30,17 +30,17 @@ build:
 dev:
 	@mkdir -p $(PWD)/data $(PWD)/var_tmp_vkanban
 	@echo "[make] docker compose build; open $(BROWSER_URL); docker compose up --build"
-	/bin/sh -lc 'UID=$(UID) GID=$(GID) REPO_ABS_PATH=$(REPO_TOP) REPO_CANON=$(REPO_CANON) docker compose build && \
+	/bin/sh -lc 'UID=$(UID) GID=$(GID) HOME=$(HOME) REPO_ABS_PATH=$(REPO_TOP) REPO_CANON=$(REPO_CANON) docker compose build && \
 	  (open "$(BROWSER_URL)" || xdg-open "$(BROWSER_URL)" || echo "[make] please open $(BROWSER_URL) manually") && \
-	  UID=$(UID) GID=$(GID) REPO_ABS_PATH=$(REPO_TOP) REPO_CANON=$(REPO_CANON) docker compose up --build'
+	  UID=$(UID) GID=$(GID) HOME=$(HOME) REPO_ABS_PATH=$(REPO_TOP) REPO_CANON=$(REPO_CANON) docker compose up --build'
 
 # フォアグラウンドで compose を起動（ghost 管理と相性良し）
 start:
 	@mkdir -p $(PWD)/data $(PWD)/var_tmp_vkanban
 	@echo "[make] docker compose build; open $(BROWSER_URL); docker compose up --build -d"
-	/bin/sh -lc 'UID=$(UID) GID=$(GID) REPO_ABS_PATH=$(REPO_TOP) REPO_CANON=$(REPO_CANON) docker compose build && \
+	/bin/sh -lc 'UID=$(UID) GID=$(GID) HOME=$(HOME) REPO_ABS_PATH=$(REPO_TOP) REPO_CANON=$(REPO_CANON) docker compose build && \
 	  (open "$(BROWSER_URL)" || xdg-open "$(BROWSER_URL)" || echo "[make] please open $(BROWSER_URL) manually") && \
-	  UID=$(UID) GID=$(GID) REPO_ABS_PATH=$(REPO_TOP) REPO_CANON=$(REPO_CANON) docker compose up --build -d'
+	  UID=$(UID) GID=$(GID) HOME=$(HOME) REPO_ABS_PATH=$(REPO_TOP) REPO_CANON=$(REPO_CANON) docker compose up --build -d'
 
 # Backward compatible alias
 run: dev

@@ -12,7 +12,7 @@
   "scripts": {
     "test": "pnpm test:e2e",
     "check": "npm run frontend:check && npm run backend:check",
-    "dev": "export VIBE_KANBAN_ASSET_MODE=prod && export HOST=0.0.0.0 && export FRONTEND_PORT=$(node scripts/setup-dev-environment.js frontend) && export BACKEND_PORT=$(node scripts/setup-dev-environment.js backend) && concurrently \"npm run backend:dev:watch\" \"npm run frontend:dev\"",
+    "dev": "export VIBE_KANBAN_ASSET_DIR=\"$HOME/Library/Application Support/ai.bloop.vibe-kanban\" && export VIBE_KANBAN_ASSET_MODE=prod && export HOST=0.0.0.0 && export FRONTEND_PORT=$(node scripts/setup-dev-environment.js frontend) && export BACKEND_PORT=$(node scripts/setup-dev-environment.js backend) && concurrently \"npm run backend:dev:watch\" \"npm run frontend:dev\"",
     "test:npm": "./test-npm-package.sh",
     "frontend:dev": "cd frontend && npm run dev -- --port ${FRONTEND_PORT:-3000} --host",
     "frontend:check": "cd frontend && npm run check",
