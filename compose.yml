@@ -29,5 +29,8 @@ services:
       # REPO_CANON:     canonical path "<org>/<repo>" (auto-provided by Makefile)
       #
       # Example: /Users/you/src/github.com/you/vkanban -> /repos/you/vkanban
-      - ${REPO_ABS_PATH}:/repos/${REPO_CANON}
+      # 直接 `docker compose up` する場合に変数未設定でも動くよう、デフォルト値を用意
+      # - REPO_ABS_PATH の既定: 現在のリポジトリ直下（この compose.yml のある場所 = `.`）
+      # - REPO_CANON の既定: このリポジトリ名に合わせた "kazuph/vkanban"
+      - ${REPO_ABS_PATH:-.}:/repos/${REPO_CANON:-kazuph/vkanban}
     restart: always
