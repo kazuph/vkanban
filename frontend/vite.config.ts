@@ -37,6 +37,8 @@ export default defineConfig({
   },
 
   server: {
+    // Bind to all interfaces so external hosts can access dev server
+    host: true,
     port: parseInt(process.env.FRONTEND_PORT || '3000'),
     // Allow access via Tailscale and other non-localhost hosts.
     // Security note: keep this list tight for dev convenience; expand via env when needed.
@@ -53,9 +55,14 @@ export default defineConfig({
           .filter(Boolean);
       }
       // Default: allow local machine hostname and .local, plus Tailscale MagicDNS.
-      const host = os.hostname().toLowerCase();
-      const defaults = new Set<string>(['.ts.net', host]);
-      if (!host.endsWith('.local')) defaults.add(`${host}.local`);
+      const hostLower = os.hostname().toLowerCase();
+      const baseHost = hostLower.replace(/\.local$/, '');
+      const defaults = new Set<string>([
+        '.ts.net',           // Tailscale MagicDNS
+        baseHost,            // e.g. "macbook-air"
+        `${baseHost}.local`, // e.g. "macbook-air.local"
+        'localhost',
+      ]);
       return Array.from(defaults);
     })(),
     // Make HMR explicit to avoid IPv6/host inference issues
@@ -84,6 +91,11 @@ export default defineConfig({
         },
       },
     },
+  },
+
+  // Ensure `vite preview` is also reachable from external hosts
+  preview: {
+    host: true,
   },
 
   build: {
