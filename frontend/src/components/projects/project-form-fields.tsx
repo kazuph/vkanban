@@ -46,6 +46,8 @@ interface ProjectFormFieldsProps {
   setError: (error: string) => void;
   projectId?: string;
   onCreateProject?: (path: string, name: string) => void;
+  workspaceDirs: string;
+  setWorkspaceDirs: (dirs: string) => void;
 }
 
 export function ProjectFormFields({
@@ -71,6 +73,8 @@ export function ProjectFormFields({
   setError,
   projectId,
   onCreateProject,
+  workspaceDirs,
+  setWorkspaceDirs,
 }: ProjectFormFieldsProps) {
   const { system } = useUserSystem();
 
@@ -287,6 +291,74 @@ export function ProjectFormFields({
                 </div>
               </>
             )}
+
+            {/* Manual inputs for existing-repo creation */}
+            <div className="space-y-4 mt-4">
+              <div className="space-y-2">
+                <Label htmlFor="git-repo-path-existing">Git Repository Path</Label>
+                <div className="flex space-x-2">
+                  <Input
+                    id="git-repo-path-existing"
+                    type="text"
+                    value={gitRepoPath}
+                    onChange={(e) => handleGitRepoPathChange(e.target.value)}
+                    placeholder="/path/to/your/existing/repo"
+                    required
+                    className="flex-1"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={async () => {
+                      const selectedPath = await showFolderPicker({
+                        title: 'Select Git Repository',
+                        description: 'Choose an existing git repository',
+                        value: gitRepoPath,
+                      });
+                      if (selectedPath) {
+                        handleGitRepoPathChange(selectedPath);
+                        const cleanName = generateProjectNameFromPath(selectedPath);
+                        if (cleanName) setName(cleanName);
+                      }
+                    }}
+                  >
+                    <Folder className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="project-name-existing">Project Name</Label>
+                <Input
+                  id="project-name-existing"
+                  type="text"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="Enter project name"
+                  required
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="workspace-dirs-existing">
+                  Workspace Directories <span className="text-red-500">*</span>
+                </Label>
+                <Input
+                  id="workspace-dirs-existing"
+                  type="text"
+                  value={workspaceDirs ?? ''}
+                  onChange={(e) => setWorkspaceDirs?.(e.target.value)}
+                  placeholder="frontend,backend (comma-separated, relative to repo root)"
+                  required
+                />
+                <p className="text-xs text-muted-foreground">
+                  Comma-separated directories at the repo root (e.g.,
+                  <code className="mx-1">frontend,backend</code>). These will be used to
+                  copy <code className="mx-1">.env*</code> files and to run setup/cleanup/dev
+                  scripts per workspace.
+                </p>
+              </div>
+            </div>
           </>
         </div>
       )}
@@ -428,6 +500,23 @@ export function ProjectFormFields({
 
       {isEditing && (
         <div className="space-y-4 pt-4 border-t border-border">
+          <div className="space-y-2">
+            <Label htmlFor="workspace-dirs-edit">
+              Workspace Directories <span className="text-red-500">*</span>
+            </Label>
+            <Input
+              id="workspace-dirs-edit"
+              type="text"
+              value={workspaceDirs ?? ''}
+              onChange={(e) => setWorkspaceDirs?.(e.target.value)}
+              placeholder="frontend,backend (comma-separated, relative to repo root)"
+              required
+            />
+            <p className="text-xs text-muted-foreground">
+              Used for .env copying and to run Setup/Cleanup/Dev scripts per workspace in the
+              worktree.
+            </p>
+          </div>
           <div className="space-y-2">
             <Label htmlFor="setup-script">Setup Script</Label>
             <textarea

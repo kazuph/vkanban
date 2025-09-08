@@ -18,13 +18,15 @@ export function useDevServer(
   const queryClient = useQueryClient();
   const { attemptData } = useAttemptExecution(attemptId);
 
-  // Find running dev server process
-  const runningDevServer = useMemo<ExecutionProcess | undefined>(() => {
-    return attemptData.processes.find(
+  // Find running dev server processes (multiple workspaces)
+  const runningDevServers = useMemo<ExecutionProcess[]>(() => {
+    return attemptData.processes.filter(
       (process) =>
         process.run_reason === 'devserver' && process.status === 'running'
     );
   }, [attemptData.processes]);
+  // Backward-compat: first running dev server (if any)
+  const runningDevServer = runningDevServers[0];
 
   // Find latest dev server process (for logs viewing)
   const latestDevServerProcess = useMemo<ExecutionProcess | undefined>(() => {
@@ -57,10 +59,17 @@ export function useDevServer(
 
   // Stop mutation
   const stopMutation = useMutation({
-    mutationKey: ['stopDevServer', runningDevServer?.id],
+    mutationKey: ['stopDevServer', runningDevServers.map((p) => p.id).join(',')],
     mutationFn: async () => {
-      if (!runningDevServer) return;
-      await executionProcessesApi.stopExecutionProcess(runningDevServer.id);
+      if (!runningDevServers.length) return;
+      // Stop all running dev servers for this attempt
+      for (const p of runningDevServers) {
+        try {
+          await executionProcessesApi.stopExecutionProcess(p.id);
+        } catch (e) {
+          console.error('Failed to stop dev server process', p.id, e);
+        }
+      }
     },
     onSuccess: async () => {
       await Promise.all([
@@ -87,6 +96,7 @@ export function useDevServer(
     isStarting: startMutation.isPending,
     isStopping: stopMutation.isPending,
     runningDevServer,
+    runningDevServers,
     latestDevServerProcess,
   };
 }
