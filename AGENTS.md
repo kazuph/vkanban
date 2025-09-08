@@ -4,7 +4,7 @@
 
 ## Docker/Compose
 
-- 起動: `make run`
+- 起動: `make run`（自動で `http://127.0.0.1:8080` を `open` してから `docker compose up --build`）
 - ログ: `make logs`
 - 停止: `make down`
 - 権限修復: `make fix-perms`（`./data` と `./var_tmp_vkanban` の所有権整備）
@@ -30,6 +30,7 @@
 - 画像キャッシュ書き込みエラー: `/data/images` が書き込み不可。
   - エントリポイントで自動作成＆診断出力あり。所有権を修復して再起動。
 - コンテナ内でブラウザが開けない警告: 仕様上問題なし。`http://127.0.0.1:8080` を手動で開く。
+  - `make run`/`make start` はホスト側で先に `open` を実行します。
 
 ### デバッグ Tips
 - 详细ログ: `RUST_LOG=debug UID=$(id -u) GID=$(id -g) docker compose up`
