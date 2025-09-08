@@ -30,4 +30,22 @@
 - コンテナはホストの `${UID}:${GID}` で動作。`./data` は常に自ユーザー所有に維持。
 - Rust のビルドが重いため、通常は `--no-cache` を使わない。
 - ローカル実行用のディレクトリは Git 追跡外: `data/`, `var_tmp_vkanban/`（.gitignore 済み）
+## Upstream Sync 2025-09-08
 
+- 取り込み元: `BloopAI/vibe-kanban@main`（v0.0.78 相当）
+- 反映ブランチ: `sync/upstream-v0.0.78`
+
+含まれる主な変更（抜粋）
+- UI: Nice Modal 採用（ダイアログ刷新）、ログビュー再設計、ダークモード修正、再接続周りの安定化、ファイル検索高速化等。
+- 設定モデル: "profiles" → "executors"（後方互換の読み込みあり）。
+- DB: 新規マイグレーション追加（2025-09-02, -03, -05）。
+- Frontend: `virtual:executor-schemas` を Vite プラグインで提供。
+
+運用メモ
+- DB バックアップ推奨: `cp -a data/db.sqlite data/db.sqlite.bak.$(date +%Y%m%d-%H%M%S)`
+- 初回起動時に自動マイグレーションが走ります。失敗時はバックアップから復旧してください。
+- Docker/Compose（Makefile/compose.yml）は vkanban 流儀を維持（上流の削除・変更は採用しません）。
+- Vite 開発サーバはこれまで通り外部アクセス/HMR 明示/allowedHosts 拡張を保持しつつ、上流のスキーマプラグインを追加済み。
+
+ブランチ運用
+- 上流の命名規約: `vk/xxxx-xxxx-xxxx`（必要に応じ採用）。

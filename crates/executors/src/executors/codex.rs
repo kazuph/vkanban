@@ -1,10 +1,16 @@
-use std::{path::PathBuf, process::Stdio, sync::Arc};
+use std::{
+    path::{Path, PathBuf},
+    process::Stdio,
+    sync::Arc,
+};
 
 use async_trait::async_trait;
 use command_group::{AsyncCommandGroup, AsyncGroupChild};
 use futures::StreamExt;
 use regex::Regex;
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use strum_macros::AsRefStr;
 use tokio::{io::AsyncWriteExt, process::Command};
 use ts_rs::TS;
 use utils::{
@@ -15,13 +21,34 @@ use utils::{
 };
 
 use crate::{
-    command::CommandBuilder,
-    executors::{ExecutorError, StandardCodingAgentExecutor},
+    command::{CmdOverrides, CommandBuilder, apply_overrides},
+    executors::{AppendPrompt, ExecutorError, StandardCodingAgentExecutor},
     logs::{
         ActionType, FileChange, NormalizedEntry, NormalizedEntryType,
         utils::{EntryIndexProvider, patch::ConversationPatch},
     },
 };
+
+/// Sandbox policy modes for Codex
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, TS, JsonSchema, AsRefStr)]
+#[serde(rename_all = "kebab-case")]
+#[strum(serialize_all = "kebab-case")]
+pub enum SandboxMode {
+    ReadOnly,
+    WorkspaceWrite,
+    DangerFullAccess,
+}
+
+/// Approval policy for Codex
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, TS, AsRefStr, JsonSchema)]
+#[serde(rename_all = "kebab-case")]
+#[strum(serialize_all = "kebab-case")]
+pub enum ApprovalPolicy {
+    Untrusted,
+    OnFailure,
+    OnRequest,
+    Never,
+}
 
 /// Handles session management for Codex executor
 pub struct SessionHandler;
@@ -102,26 +129,134 @@ impl SessionHandler {
             "Could not find rollout file for session_id: {session_id}"
         ))
     }
+
+    /// Fork a Codex rollout file by copying it to a temp location and assigning a new session id.
+    /// Returns (new_rollout_path, new_session_id).
+    pub fn fork_rollout_file(session_id: &str) -> Result<(PathBuf, String), String> {
+        use std::io::{BufRead, BufReader, Write};
+
+        let original = Self::find_rollout_file_path(session_id)?;
+
+        let file = std::fs::File::open(&original)
+            .map_err(|e| format!("Failed to open rollout file {}: {e}", original.display()))?;
+        let mut reader = BufReader::new(file);
+
+        let mut first_line = String::new();
+        reader
+            .read_line(&mut first_line)
+            .map_err(|e| format!("Failed to read first line from {}: {e}", original.display()))?;
+
+        let mut meta: serde_json::Value = serde_json::from_str(first_line.trim()).map_err(|e| {
+            format!(
+                "Failed to parse first line JSON in {}: {e}",
+                original.display()
+            )
+        })?;
+
+        // Generate new UUID for forked session
+        let new_id = uuid::Uuid::new_v4().to_string();
+        if let serde_json::Value::Object(ref mut map) = meta {
+            map.insert("id".to_string(), serde_json::Value::String(new_id.clone()));
+        } else {
+            return Err("First line of rollout file is not a JSON object".to_string());
+        }
+
+        // Prepare destination path in the same directory, following Codex rollout naming convention:
+        // rollout-<YYYY>-<MM>-<DD>T<HH>-<mm>-<ss>-<session_id>.jsonl
+        let parent_dir = original
+            .parent()
+            .ok_or_else(|| format!("Unexpected path with no parent: {}", original.display()))?;
+        let filename = original
+            .file_name()
+            .and_then(|s| s.to_str())
+            .unwrap_or("rollout.jsonl");
+        let new_filename = if filename.starts_with("rollout-") && filename.ends_with(".jsonl") {
+            let stem = &filename[..filename.len() - ".jsonl".len()];
+            if let Some(idx) = stem.rfind('-') {
+                // Replace the trailing session id with the new id, keep timestamp intact
+                format!("{}-{}.jsonl", &stem[..idx], new_id)
+            } else {
+                format!("rollout-{new_id}.jsonl")
+            }
+        } else {
+            format!("rollout-{new_id}.jsonl")
+        };
+        let dest = parent_dir.join(new_filename);
+
+        // Write new file with modified first line and copy the rest as-is
+        let mut writer = std::fs::File::create(&dest)
+            .map_err(|e| format!("Failed to create forked rollout {}: {e}", dest.display()))?;
+        let meta_line = serde_json::to_string(&meta)
+            .map_err(|e| format!("Failed to serialize modified meta: {e}"))?;
+        writeln!(writer, "{meta_line}")
+            .map_err(|e| format!("Failed to write meta to {}: {e}", dest.display()))?;
+
+        for line in reader.lines() {
+            let line =
+                line.map_err(|e| format!("I/O error reading {}: {e}", original.display()))?;
+            writeln!(writer, "{line}")
+                .map_err(|e| format!("Failed to write to {}: {e}", dest.display()))?;
+        }
+
+        Ok((dest, new_id))
+    }
 }
 
-/// An executor that uses Codex CLI to process tasks
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, TS)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, TS, JsonSchema)]
 pub struct Codex {
-    pub command: CommandBuilder,
-    pub append_prompt: Option<String>,
+    #[serde(default)]
+    pub append_prompt: AppendPrompt,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sandbox: Option<SandboxMode>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub approval: Option<ApprovalPolicy>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub oss: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
+    #[serde(flatten)]
+    pub cmd: CmdOverrides,
+}
+
+impl Codex {
+    fn build_command_builder(&self) -> CommandBuilder {
+        let mut builder = CommandBuilder::new("npx -y @openai/codex exec")
+            .params(["--json", "--skip-git-repo-check"]);
+
+        if let Some(approval) = &self.approval {
+            builder = builder.extend_params(["--ask-for-approval", approval.as_ref()]);
+        }
+
+        if let Some(sandbox) = &self.sandbox {
+            builder = builder.extend_params(["--sandbox", sandbox.as_ref()]);
+            if sandbox == &SandboxMode::DangerFullAccess && self.approval.is_none() {
+                builder = builder.extend_params(["--dangerously-bypass-approvals-and-sandbox"]);
+            }
+        }
+
+        if self.oss.unwrap_or(false) {
+            builder = builder.extend_params(["--oss"]);
+        }
+
+        if let Some(model) = &self.model {
+            builder = builder.extend_params(["--model", model]);
+        }
+
+        apply_overrides(builder, &self.cmd)
+    }
 }
 
 #[async_trait]
 impl StandardCodingAgentExecutor for Codex {
     async fn spawn(
         &self,
-        current_dir: &PathBuf,
+        current_dir: &Path,
         prompt: &str,
     ) -> Result<AsyncGroupChild, ExecutorError> {
         let (shell_cmd, shell_arg) = get_shell_command();
-        let codex_command = self.command.build_initial();
+        let codex_command = self.build_command_builder().build_initial();
 
-        let combined_prompt = utils::text::combine_prompt(&self.append_prompt, prompt);
+        let combined_prompt = self.append_prompt.combine_prompt(prompt);
 
         let mut command = Command::new(shell_cmd);
         command
@@ -148,23 +283,21 @@ impl StandardCodingAgentExecutor for Codex {
 
     async fn spawn_follow_up(
         &self,
-        current_dir: &PathBuf,
+        current_dir: &Path,
         prompt: &str,
         session_id: &str,
     ) -> Result<AsyncGroupChild, ExecutorError> {
-        // Find the rollout file for the given session_id using SessionHandler
-        let rollout_file_path =
-            SessionHandler::find_rollout_file_path(session_id).map_err(|e| {
-                ExecutorError::SpawnError(std::io::Error::new(std::io::ErrorKind::NotFound, e))
-            })?;
+        // Fork rollout: copy and assign a new session id so each execution has a unique session
+        let (rollout_file_path, _new_session_id) = SessionHandler::fork_rollout_file(session_id)
+            .map_err(|e| ExecutorError::SpawnError(std::io::Error::other(e)))?;
 
         let (shell_cmd, shell_arg) = get_shell_command();
-        let codex_command = self.command.build_follow_up(&[
+        let codex_command = self.build_command_builder().build_follow_up(&[
             "-c".to_string(),
             format!("experimental_resume={}", rollout_file_path.display()),
         ]);
 
-        let combined_prompt = utils::text::combine_prompt(&self.append_prompt, prompt);
+        let combined_prompt = self.append_prompt.combine_prompt(prompt);
 
         let mut command = Command::new(shell_cmd);
         command
@@ -189,14 +322,14 @@ impl StandardCodingAgentExecutor for Codex {
         Ok(child)
     }
 
-    fn normalize_logs(&self, msg_store: Arc<MsgStore>, current_dir: &PathBuf) {
+    fn normalize_logs(&self, msg_store: Arc<MsgStore>, current_dir: &Path) {
         let entry_index_provider = EntryIndexProvider::start_from(&msg_store);
 
         // Process stderr logs for session extraction only (errors come through JSONL)
         SessionHandler::start_session_id_extraction(msg_store.clone());
 
         // Process stdout logs (Codex's JSONL output)
-        let current_dir = current_dir.clone();
+        let current_dir = current_dir.to_path_buf();
         tokio::spawn(async move {
             let mut stream = msg_store.stdout_lines_stream();
             use std::collections::HashMap;
@@ -410,7 +543,7 @@ impl StandardCodingAgentExecutor for Codex {
                     let entry = NormalizedEntry {
                         timestamp: None,
                         entry_type: NormalizedEntryType::SystemMessage,
-                        content: format!("Raw output: {trimmed}"),
+                        content: trimmed.to_string(),
                         metadata: None,
                     };
 
@@ -420,6 +553,11 @@ impl StandardCodingAgentExecutor for Codex {
                 }
             }
         });
+    }
+
+    // MCP configuration methods
+    fn default_mcp_config_path(&self) -> Option<std::path::PathBuf> {
+        dirs::home_dir().map(|home| home.join(".codex").join("config.toml"))
     }
 }
 
@@ -603,7 +741,7 @@ pub enum CodexFileChange {
 
 impl CodexJson {
     /// Convert to normalized entries
-    pub fn to_normalized_entries(&self, current_dir: &PathBuf) -> Option<Vec<NormalizedEntry>> {
+    pub fn to_normalized_entries(&self, current_dir: &Path) -> Option<Vec<NormalizedEntry>> {
         match self {
             CodexJson::SystemConfig { .. } => self.format_config_message().map(|content| {
                 vec![NormalizedEntry {
@@ -839,7 +977,7 @@ mod tests {
                 entries.push(NormalizedEntry {
                     timestamp: None,
                     entry_type: NormalizedEntryType::SystemMessage,
-                    content: format!("Raw output: {trimmed}"),
+                    content: trimmed.to_string(),
                     metadata: None,
                 });
             }
@@ -938,11 +1076,7 @@ invalid json line here
             entries[0].entry_type,
             NormalizedEntryType::SystemMessage
         ));
-        assert!(
-            entries[0]
-                .content
-                .contains("Raw output: invalid json line here")
-        );
+        assert!(entries[0].content.contains("invalid json line here"));
     }
 
     #[test]

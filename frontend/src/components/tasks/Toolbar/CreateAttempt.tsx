@@ -1,4 +1,4 @@
-import { Dispatch, SetStateAction, useCallback, useState } from 'react';
+import { Dispatch, SetStateAction, useCallback } from 'react';
 import { Button } from '@/components/ui/button.tsx';
 import { ArrowDown, Settings2, X } from 'lucide-react';
 import {
@@ -7,25 +7,15 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu.tsx';
-import type {
-  ProfileConfig,
-  GitBranch,
-  ProfileVariantLabel,
-  Task,
-} from 'shared/types';
+import type { BaseCodingAgent, GitBranch, Task } from 'shared/types';
+import type { ExecutorConfig } from 'shared/types';
+import type { ExecutorProfileId } from 'shared/types';
 import type { TaskAttempt } from 'shared/types';
 import { useAttemptCreation } from '@/hooks/useAttemptCreation';
 import { useAttemptExecution } from '@/hooks/useAttemptExecution';
 import BranchSelector from '@/components/tasks/BranchSelector.tsx';
 import { useKeyboardShortcuts } from '@/lib/keyboard-shortcuts.ts';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog.tsx';
+import { showModal } from '@/lib/modals';
 import { Card } from '@/components/ui/card';
 
 type Props = {
@@ -33,12 +23,12 @@ type Props = {
   branches: GitBranch[];
   taskAttempts: TaskAttempt[];
   createAttemptBranch: string | null;
-  selectedProfile: ProfileVariantLabel | null;
+  selectedProfile: ExecutorProfileId | null;
   selectedBranch: string | null;
   setIsInCreateAttemptMode: Dispatch<SetStateAction<boolean>>;
   setCreateAttemptBranch: Dispatch<SetStateAction<string | null>>;
-  setSelectedProfile: Dispatch<SetStateAction<ProfileVariantLabel | null>>;
-  availableProfiles: ProfileConfig[] | null;
+  setSelectedProfile: Dispatch<SetStateAction<ExecutorProfileId | null>>;
+  availableProfiles: Record<string, ExecutorConfig> | null;
   selectedAttempt: TaskAttempt | null;
 };
 
@@ -58,16 +48,9 @@ function CreateAttempt({
   const { isAttemptRunning } = useAttemptExecution(selectedAttempt?.id);
   const { createAttempt, isCreating } = useAttemptCreation(task.id);
 
-  const [showCreateAttemptConfirmation, setShowCreateAttemptConfirmation] =
-    useState(false);
-
-  const [pendingBaseBranch, setPendingBaseBranch] = useState<
-    string | undefined
-  >(undefined);
-
   // Create attempt logic
   const actuallyCreateAttempt = useCallback(
-    async (profile: ProfileVariantLabel, baseBranch?: string) => {
+    async (profile: ExecutorProfileId, baseBranch?: string) => {
       const effectiveBaseBranch = baseBranch || selectedBranch;
 
       if (!effectiveBaseBranch) {
@@ -84,18 +67,31 @@ function CreateAttempt({
 
   // Handler for Enter key or Start button
   const onCreateNewAttempt = useCallback(
-    (
-      profile: ProfileVariantLabel,
+    async (
+      profile: ExecutorProfileId,
       baseBranch?: string,
       isKeyTriggered?: boolean
     ) => {
       if (task.status === 'todo' && isKeyTriggered) {
-        setSelectedProfile(profile);
-        setPendingBaseBranch(baseBranch);
-        setShowCreateAttemptConfirmation(true);
+        try {
+          const result = await showModal<'confirmed' | 'canceled'>(
+            'create-attempt-confirm',
+            {
+              title: 'Start New Attempt?',
+              message:
+                'Are you sure you want to start a new attempt for this task? This will create a new session and branch.',
+            }
+          );
+
+          if (result === 'confirmed') {
+            await actuallyCreateAttempt(profile, baseBranch);
+            setIsInCreateAttemptMode(false);
+          }
+        } catch (error) {
+          // User cancelled - do nothing
+        }
       } else {
-        actuallyCreateAttempt(profile, baseBranch);
-        setShowCreateAttemptConfirmation(false);
+        await actuallyCreateAttempt(profile, baseBranch);
         setIsInCreateAttemptMode(false);
       }
     },
@@ -105,21 +101,17 @@ function CreateAttempt({
   // Keyboard shortcuts
   useKeyboardShortcuts({
     onEnter: () => {
-      if (showCreateAttemptConfirmation) {
-        handleConfirmCreateAttempt();
-      } else {
-        if (!selectedProfile) {
-          return;
-        }
-        onCreateNewAttempt(
-          selectedProfile,
-          createAttemptBranch || undefined,
-          true
-        );
+      if (!selectedProfile) {
+        return;
       }
+      onCreateNewAttempt(
+        selectedProfile,
+        createAttemptBranch || undefined,
+        true
+      );
     },
-    hasOpenDialog: showCreateAttemptConfirmation,
-    closeDialog: () => setShowCreateAttemptConfirmation(false),
+    hasOpenDialog: false,
+    closeDialog: () => {},
   });
 
   const handleExitCreateAttemptMode = () => {
@@ -131,15 +123,6 @@ function CreateAttempt({
       return;
     }
     onCreateNewAttempt(selectedProfile, createAttemptBranch || undefined);
-  };
-
-  const handleConfirmCreateAttempt = () => {
-    if (!selectedProfile) {
-      return;
-    }
-    actuallyCreateAttempt(selectedProfile, pendingBaseBranch);
-    setShowCreateAttemptConfirmation(false);
-    setIsInCreateAttemptMode(false);
   };
 
   return (
@@ -201,31 +184,34 @@ function CreateAttempt({
                     <div className="flex items-center gap-1.5">
                       <Settings2 className="h-3 w-3" />
                       <span className="truncate">
-                        {selectedProfile?.profile || 'Select profile'}
+                        {selectedProfile?.executor || 'Select profile'}
                       </span>
                     </div>
                     <ArrowDown className="h-3 w-3" />
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent className="w-full">
-                  {availableProfiles.map((profile) => (
-                    <DropdownMenuItem
-                      key={profile.label}
-                      onClick={() => {
-                        setSelectedProfile({
-                          profile: profile.label,
-                          variant: null,
-                        });
-                      }}
-                      className={
-                        selectedProfile?.profile === profile.label
-                          ? 'bg-accent'
-                          : ''
-                      }
-                    >
-                      {profile.label}
-                    </DropdownMenuItem>
-                  ))}
+                  {availableProfiles &&
+                    Object.entries(availableProfiles)
+                      .sort((a, b) => a[0].localeCompare(b[0]))
+                      .map(([profileKey]) => (
+                        <DropdownMenuItem
+                          key={profileKey}
+                          onClick={() => {
+                            setSelectedProfile({
+                              executor: profileKey as BaseCodingAgent,
+                              variant: null,
+                            });
+                          }}
+                          className={
+                            selectedProfile?.executor === profileKey
+                              ? 'bg-accent'
+                              : ''
+                          }
+                        >
+                          {profileKey}
+                        </DropdownMenuItem>
+                      ))}
                 </DropdownMenuContent>
               </DropdownMenu>
             )}
@@ -239,11 +225,10 @@ function CreateAttempt({
               </label>
             </div>
             {(() => {
-              const currentProfile = availableProfiles?.find(
-                (p) => p.label === selectedProfile?.profile
-              );
+              const currentProfile =
+                availableProfiles?.[selectedProfile?.executor || ''];
               const hasVariants =
-                currentProfile?.variants && currentProfile.variants.length > 0;
+                currentProfile && Object.keys(currentProfile).length > 0;
 
               if (hasVariants && currentProfile) {
                 return (
@@ -255,43 +240,30 @@ function CreateAttempt({
                         className="w-full px-2 flex items-center justify-between text-xs"
                       >
                         <span className="truncate flex-1 text-left">
-                          {selectedProfile?.variant || 'Default'}
+                          {selectedProfile?.variant || 'DEFAULT'}
                         </span>
                         <ArrowDown className="h-3 w-3 ml-1 flex-shrink-0" />
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent className="w-full">
-                      <DropdownMenuItem
-                        onClick={() => {
-                          if (selectedProfile) {
-                            setSelectedProfile({
-                              ...selectedProfile,
-                              variant: null,
-                            });
-                          }
-                        }}
-                        className={!selectedProfile?.variant ? 'bg-accent' : ''}
-                      >
-                        Default
-                      </DropdownMenuItem>
-                      {currentProfile.variants.map((variant) => (
+                      {Object.entries(currentProfile).map(([variantLabel]) => (
                         <DropdownMenuItem
-                          key={variant.label}
+                          key={variantLabel}
                           onClick={() => {
                             if (selectedProfile) {
                               setSelectedProfile({
                                 ...selectedProfile,
-                                variant: variant.label,
+                                variant: variantLabel,
                               });
                             }
                           }}
                           className={
-                            selectedProfile?.variant === variant.label
+                            selectedProfile?.variant === variantLabel
                               ? 'bg-accent'
                               : ''
                           }
                         >
-                          {variant.label}
+                          {variantLabel}
                         </DropdownMenuItem>
                       ))}
                     </DropdownMenuContent>
@@ -350,37 +322,6 @@ function CreateAttempt({
           </div>
         </div>
       </div>
-
-      {/* Confirmation Dialog */}
-      <Dialog
-        open={showCreateAttemptConfirmation}
-        onOpenChange={setShowCreateAttemptConfirmation}
-      >
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Start New Attempt?</DialogTitle>
-            <DialogDescription>
-              Are you sure you want to start a new attempt for this task? This
-              will create a new session and branch.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setShowCreateAttemptConfirmation(false)}
-            >
-              Cancel
-            </Button>
-            <Button
-              onClick={handleConfirmCreateAttempt}
-              disabled={isCreating}
-              className="bg-black text-white hover:bg-black/90"
-            >
-              {isCreating ? 'Creating...' : 'Start'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

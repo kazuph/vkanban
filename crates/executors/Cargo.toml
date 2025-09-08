@@ -1,6 +1,6 @@
 [package]
 name = "executors"
-version = "0.0.70"
+version = "0.0.78"
 edition = "2024"
 
 [dependencies]
@@ -8,7 +8,7 @@ utils = { path = "../utils" }
 tokio = { workspace = true }
 tokio-util = { version = "0.7", features = ["io"] }
 bytes = "1.0"
-serde = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 tracing = { workspace = true }
 toml = "0.8"
@@ -16,6 +16,7 @@ tracing-subscriber = { workspace = true }
 chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1.0", features = ["v4", "serde"] }
 ts-rs = { workspace = true, features = ["serde-json-impl"]}
+schemars = { workspace = true }
 dirs = "5.0"
 xdg = "3.0"
 async-trait = "0.1"
@@ -35,3 +36,7 @@ bon = "3.6"
 fork_stream = "0.1.0"
 os_pipe = "1.2"
 strip-ansi-escapes = "0.2.1"
+strum = "0.27.2"
+strum_macros = "0.27.2"
+convert_case = "0.6"
+sqlx = "0.8.6"

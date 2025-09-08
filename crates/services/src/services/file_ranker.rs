@@ -2,7 +2,6 @@ use std::{
     collections::HashMap,
     path::{Path, PathBuf},
     sync::Arc,
-    time::Instant,
 };
 
 use chrono::{DateTime, Utc};
@@ -32,7 +31,6 @@ pub type FileStats = HashMap<String, FileStat>;
 struct RepoHistoryCache {
     head_sha: String,
     stats: Arc<FileStats>,
-    generated_at: Instant,
 }
 
 /// Global cache for file ranking statistics
@@ -47,6 +45,7 @@ const RECENCY_WEIGHT: i64 = 2;
 const FREQUENCY_WEIGHT: i64 = 1;
 
 /// Service for ranking files based on git history
+#[derive(Clone)]
 pub struct FileRanker {
     git_service: GitService,
 }
@@ -147,7 +146,6 @@ impl FileRanker {
                 RepoHistoryCache {
                     head_sha: head_info.oid,
                     stats: Arc::clone(&stats_arc),
-                    generated_at: Instant::now(),
                 },
             );
         }

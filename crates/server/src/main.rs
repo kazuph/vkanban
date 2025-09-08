@@ -1,17 +1,17 @@
 use anyhow::{self, Error as AnyhowError};
 use deployment::{Deployment, DeploymentError};
-use server::{routes, DeploymentImpl};
+use server::{DeploymentImpl, routes};
 use sqlx::Error as SqlxError;
 use strip_ansi_escapes::strip;
 use thiserror::Error;
-use tracing_subscriber::{prelude::*, EnvFilter};
+use tracing_subscriber::{EnvFilter, prelude::*};
 use utils::{
     assets::{asset_dir, profiles_path},
     browser::open_browser,
     port_file::write_port_file,
     sentry::sentry_layer,
 };
-use executors::profile::ProfileConfigs;
+use executors::profile::ExecutorConfigs;
 
 #[derive(Debug, Error)]
 pub enum VibeKanbanError {
@@ -46,7 +46,7 @@ async fn main() -> Result<(), VibeKanbanError> {
     // Ensure profiles.json exists so the frontend can read/edit it without warnings
     let profiles_path = profiles_path();
     if !profiles_path.exists() {
-        match serde_json::to_string_pretty(&ProfileConfigs::from_defaults()) {
+        match serde_json::to_string_pretty(&ExecutorConfigs::from_defaults()) {
             Ok(defaults) => {
                 if let Err(e) = std::fs::write(&profiles_path, defaults) {
                     tracing::warn!("Failed to create default profiles.json at {:?}: {}", profiles_path, e);
@@ -65,6 +65,18 @@ async fn main() -> Result<(), VibeKanbanError> {
     deployment
         .track_if_analytics_allowed("session_start", serde_json::json!({}))
         .await;
+
+    // Pre-warm file search cache for most active projects
+    let deployment_for_cache = deployment.clone();
+    tokio::spawn(async move {
+        if let Err(e) = deployment_for_cache
+            .file_search_cache()
+            .warm_most_active(&deployment_for_cache.db().pool, 3)
+            .await
+        {
+            tracing::warn!("Failed to warm file search cache: {}", e);
+        }
+    });
 
     let app_router = routes::router(deployment);
 
@@ -92,10 +104,10 @@ async fn main() -> Result<(), VibeKanbanError> {
     let actual_port = listener.local_addr()?.port(); // get → 53427 (example)
 
     // Write port file for discovery if prod, warn on fail
-    if !cfg!(debug_assertions) {
-        if let Err(e) = write_port_file(actual_port).await {
-            tracing::warn!("Failed to write port file: {}", e);
-        }
+    if !cfg!(debug_assertions)
+        && let Err(e) = write_port_file(actual_port).await
+    {
+        tracing::warn!("Failed to write port file: {}", e);
     }
 
     tracing::info!("Server running on http://{host}:{actual_port}");
@@ -103,7 +115,11 @@ async fn main() -> Result<(), VibeKanbanError> {
     if !cfg!(debug_assertions) {
         tracing::info!("Opening browser...");
         if let Err(e) = open_browser(&format!("http://127.0.0.1:{actual_port}")).await {
-            tracing::warn!("Failed to open browser automatically: {}. Please open http://127.0.0.1:{} manually.", e, actual_port);
+            tracing::warn!(
+                "Failed to open browser automatically: {}. Please open http://127.0.0.1:{} manually.",
+                e,
+                actual_port
+            );
         }
     }
 

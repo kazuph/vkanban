@@ -5,14 +5,12 @@ import {
   DiffLineType,
   parseInstance,
 } from '@git-diff-view/react';
-import { ThemeMode } from 'shared/types';
-import { ChevronRight, ChevronUp } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { useConfig } from '@/components/config-provider';
+import { SquarePen } from 'lucide-react';
+import { useUserSystem } from '@/components/config-provider';
 import { getHighLightLanguageFromPath } from '@/utils/extToLanguage';
+import { getActualTheme } from '@/utils/theme';
 import '@/styles/diff-style-overrides.css';
 import '@/styles/edit-diff-overrides.css';
-import { isDarkTheme } from '@/utils/theme';
 
 type Props = {
   path: string;
@@ -65,14 +63,10 @@ function EditDiffRenderer({
   hasLineNumbers,
   expansionKey,
 }: Props) {
-  const { config } = useConfig();
+  const { config } = useUserSystem();
   const [expanded, setExpanded] = useExpandable(expansionKey, false);
 
-  const theme: 'light' | 'dark' | undefined = isDarkTheme(
-    config?.theme || ThemeMode.SYSTEM
-  )
-    ? 'dark'
-    : 'light';
+  const theme = getActualTheme(config?.theme);
 
   const { hunks, hideLineNumbers, additions, deletions, isValidDiff } = useMemo(
     () => processUnifiedDiff(unifiedDiff, hasLineNumbers),
@@ -91,25 +85,12 @@ function EditDiffRenderer({
   }, [hunks, path]);
 
   return (
-    <div className="my-4 border">
-      <div className="flex items-center px-4 py-2">
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => setExpanded()}
-          className="h-6 w-6 p-0 mr-2"
-          title={expanded ? 'Collapse' : 'Expand'}
-          aria-expanded={expanded}
-        >
-          {expanded ? (
-            <ChevronUp className="h-3 w-3" />
-          ) : (
-            <ChevronRight className="h-3 w-3" />
-          )}
-        </Button>
+    <div>
+      <div className="flex items-center text-secondary-foreground gap-1.5">
+        <SquarePen className="h-3 w-3" />
         <p
-          className="text-xs font-mono overflow-x-auto flex-1"
-          style={{ color: 'hsl(var(--muted-foreground) / 0.7)' }}
+          onClick={() => setExpanded()}
+          className="text-xs font-mono overflow-x-auto flex-1 cursor-pointer"
         >
           {path}{' '}
           <span style={{ color: 'hsl(var(--console-success))' }}>
@@ -122,7 +103,7 @@ function EditDiffRenderer({
       </div>
 
       {expanded && (
-        <div className={'mt-2' + hideLineNumbersClass}>
+        <div className={'mt-2 border ' + hideLineNumbersClass}>
           {isValidDiff ? (
             <DiffView
               data={diffData}

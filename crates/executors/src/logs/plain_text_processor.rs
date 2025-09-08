@@ -119,11 +119,6 @@ impl PlainTextBuffer {
         result
     }
 
-    /// Return the total number of lines.
-    pub fn line_count(&self) -> usize {
-        self.lines.len()
-    }
-
     /// Return the total length of content.
     pub fn total_len(&self) -> usize {
         self.total_len
@@ -335,11 +330,9 @@ impl PlainTextLogProcessor {
         normalized_entry_producer: impl Fn(String) -> NormalizedEntry + 'static + Send,
         size_threshold: Option<usize>,
         time_gap: Option<Duration>,
-        format_chunk: Option<Box<dyn Fn(Option<&str>, String) -> String + 'static + Send>>,
-        transform_lines: Option<Box<dyn FnMut(&mut Vec<String>) + 'static + Send>>,
-        message_boundary_predicate: Option<
-            Box<dyn Fn(&[String]) -> Option<MessageBoundary> + 'static + Send>,
-        >,
+        format_chunk: Option<FormatChunkFn>,
+        transform_lines: Option<LinesTransformFn>,
+        message_boundary_predicate: Option<MessageBoundaryPredicateFn>,
         index_provider: EntryIndexProvider,
     ) -> Self {
         Self {
@@ -376,11 +369,11 @@ mod tests {
         let mut buffer = PlainTextBuffer::new();
 
         buffer.ingest("line1\npartial".to_string());
-        assert_eq!(buffer.line_count(), 2);
+        assert_eq!(buffer.lines().len(), 2);
 
         let lines = buffer.flush();
         assert_eq!(lines, vec!["line1\n", "partial"]);
-        assert_eq!(buffer.line_count(), 0);
+        assert_eq!(buffer.lines().len(), 0);
     }
 
     #[test]

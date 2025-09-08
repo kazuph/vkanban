@@ -1,15 +1,15 @@
 use std::path::PathBuf;
 
 use axum::{
+    BoxError, Extension, Json, Router,
     extract::{Query, State},
     http::StatusCode,
     middleware::from_fn_with_state,
     response::{
-        sse::{Event, KeepAlive},
         Json as ResponseJson, Sse,
+        sse::{Event, KeepAlive},
     },
     routing::{get, post},
-    BoxError, Extension, Json, Router,
 };
 use db::models::{
     execution_process::{ExecutionProcess, ExecutionProcessRunReason},
@@ -22,11 +22,11 @@ use db::models::{
 use deployment::Deployment;
 use executors::{
     actions::{
+        ExecutorAction, ExecutorActionType,
         coding_agent_follow_up::CodingAgentFollowUpRequest,
         script::{ScriptContext, ScriptRequest, ScriptRequestLanguage},
-        ExecutorAction, ExecutorActionType,
     },
-    profile::{ProfileConfigs, ProfileVariantLabel},
+    profile::ExecutorProfileId,
 };
 use futures_util::TryStreamExt;
 use git2::BranchType;
@@ -41,11 +41,29 @@ use ts_rs::TS;
 use utils::{browser::open_browser, response::ApiResponse};
 use uuid::Uuid;
 
-use crate::{error::ApiError, middleware::load_task_attempt_middleware, DeploymentImpl};
+use crate::{DeploymentImpl, error::ApiError, middleware::load_task_attempt_middleware};
 
 #[derive(Debug, Deserialize, Serialize, TS)]
 pub struct RebaseTaskAttemptRequest {
     pub new_base_branch: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize, TS)]
+pub struct RestoreAttemptRequest {
+    /// Process to restore to (target = its after_head_commit)
+    pub process_id: Uuid,
+    /// If true, allow resetting Git even when uncommitted changes exist
+    pub force_when_dirty: Option<bool>,
+    /// If false, skip performing the Git reset step (history drop still applies)
+    pub perform_git_reset: Option<bool>,
+}
+
+#[derive(Debug, Serialize, TS)]
+pub struct RestoreAttemptResult {
+    pub had_later_processes: bool,
+    pub git_reset_needed: bool,
+    pub git_reset_applied: bool,
+    pub target_after_oid: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Serialize, TS)]
@@ -86,8 +104,16 @@ pub async fn get_task_attempt(
 #[derive(Debug, Deserialize, ts_rs::TS)]
 pub struct CreateTaskAttemptBody {
     pub task_id: Uuid,
-    pub profile_variant_label: Option<ProfileVariantLabel>,
+    /// Executor profile specification
+    pub executor_profile_id: ExecutorProfileId,
     pub base_branch: String,
+}
+
+impl CreateTaskAttemptBody {
+    /// Get the executor profile ID
+    pub fn get_executor_profile_id(&self) -> ExecutorProfileId {
+        self.executor_profile_id.clone()
+    }
 }
 
 #[axum::debug_handler]
@@ -95,23 +121,12 @@ pub async fn create_task_attempt(
     State(deployment): State<DeploymentImpl>,
     Json(payload): Json<CreateTaskAttemptBody>,
 ) -> Result<ResponseJson<ApiResponse<TaskAttempt>>, ApiError> {
-    let profile_variant_label = payload
-        .profile_variant_label
-        .unwrap_or(deployment.config().read().await.profile.clone());
+    let executor_profile_id = payload.get_executor_profile_id();
 
-    let profiles = ProfileConfigs::get_cached();
-    let profile = profiles
-        .get_profile(&profile_variant_label.profile)
-        .ok_or_else(|| {
-            ApiError::TaskAttempt(TaskAttemptError::ValidationError(format!(
-                "Profile not found: {}",
-                profile_variant_label.profile
-            )))
-        })?;
     let task_attempt = TaskAttempt::create(
         &deployment.db().pool,
         &CreateTaskAttempt {
-            profile: profile.default.label.clone(),
+            executor: executor_profile_id.executor,
             base_branch: payload.base_branch.clone(),
         },
         payload.task_id,
@@ -120,7 +135,7 @@ pub async fn create_task_attempt(
 
     let execution_process = deployment
         .container()
-        .start_attempt(&task_attempt, profile_variant_label.clone())
+        .start_attempt(&task_attempt, executor_profile_id.clone())
         .await?;
 
     deployment
@@ -128,8 +143,8 @@ pub async fn create_task_attempt(
             "task_attempt_started",
             serde_json::json!({
                 "task_id": task_attempt.task_id.to_string(),
-                "variant": &profile_variant_label.variant,
-                "profile": profile.default.label,
+                "variant": &executor_profile_id.variant,
+                "executor": &executor_profile_id.executor,
                 "attempt_id": task_attempt.id.to_string(),
             }),
         )
@@ -160,14 +175,14 @@ pub async fn follow_up(
         .ensure_container_exists(&task_attempt)
         .await?;
 
-    // Get session_id with simple query
+    // Get latest session id (ignoring dropped)
     let session_id = ExecutionProcess::find_latest_session_id_by_task_attempt(
         &deployment.db().pool,
         task_attempt.id,
     )
     .await?
     .ok_or(ApiError::TaskAttempt(TaskAttemptError::ValidationError(
-        "Couldn't find a prior CodingAgent execution that already has a session_id".to_string(),
+        "Couldn't find a prior session_id, please create a new task attempt".to_string(),
     )))?;
 
     // Get ExecutionProcess for profile data
@@ -180,24 +195,24 @@ pub async fn follow_up(
     .ok_or(ApiError::TaskAttempt(TaskAttemptError::ValidationError(
         "Couldn't find initial coding agent process, has it run yet?".to_string(),
     )))?;
-    let initial_profile_variant_label = match &latest_execution_process
+    let initial_executor_profile_id = match &latest_execution_process
         .executor_action()
         .map_err(|e| ApiError::TaskAttempt(TaskAttemptError::ValidationError(e.to_string())))?
         .typ
     {
         ExecutorActionType::CodingAgentInitialRequest(request) => {
-            Ok(request.profile_variant_label.clone())
+            Ok(request.executor_profile_id.clone())
         }
         ExecutorActionType::CodingAgentFollowUpRequest(request) => {
-            Ok(request.profile_variant_label.clone())
+            Ok(request.executor_profile_id.clone())
         }
         _ => Err(ApiError::TaskAttempt(TaskAttemptError::ValidationError(
             "Couldn't find profile from initial request".to_string(),
         ))),
     }?;
 
-    let profile_variant_label = ProfileVariantLabel {
-        profile: initial_profile_variant_label.profile,
+    let executor_profile_id = ExecutorProfileId {
+        executor: initial_executor_profile_id.executor,
         variant: payload.variant,
     };
 
@@ -244,7 +259,7 @@ pub async fn follow_up(
     let follow_up_request = CodingAgentFollowUpRequest {
         prompt,
         session_id,
-        profile_variant_label,
+        executor_profile_id,
     };
 
     let follow_up_action = ExecutorAction::new(
@@ -264,6 +279,103 @@ pub async fn follow_up(
     Ok(ResponseJson(ApiResponse::success(execution_process)))
 }
 
+#[axum::debug_handler]
+pub async fn restore_task_attempt(
+    Extension(task_attempt): Extension<TaskAttempt>,
+    State(deployment): State<DeploymentImpl>,
+    Json(payload): Json<RestoreAttemptRequest>,
+) -> Result<ResponseJson<ApiResponse<RestoreAttemptResult>>, ApiError> {
+    let pool = &deployment.db().pool;
+    let proc_id = payload.process_id;
+    let force_when_dirty = payload.force_when_dirty.unwrap_or(false);
+    let perform_git_reset = payload.perform_git_reset.unwrap_or(true);
+
+    // Validate process belongs to attempt
+    let process =
+        ExecutionProcess::find_by_id(pool, proc_id)
+            .await?
+            .ok_or(ApiError::TaskAttempt(TaskAttemptError::ValidationError(
+                "Process not found".to_string(),
+            )))?;
+    if process.task_attempt_id != task_attempt.id {
+        return Err(ApiError::TaskAttempt(TaskAttemptError::ValidationError(
+            "Process does not belong to this attempt".to_string(),
+        )));
+    }
+
+    // Determine if there are later processes
+    let later = ExecutionProcess::count_later_than(pool, task_attempt.id, proc_id).await?;
+    let had_later_processes = later > 0;
+
+    // Mark later processes as dropped
+    if had_later_processes {
+        ExecutionProcess::set_restore_boundary(pool, task_attempt.id, proc_id).await?;
+    }
+
+    // Attempt Git reset to this process's after_head_commit if needed
+    let mut git_reset_needed = false;
+    let mut git_reset_applied = false;
+    let target_after_oid = process.after_head_commit.clone();
+    if perform_git_reset {
+        if let Some(target_oid) = &target_after_oid {
+            let container_ref = deployment
+                .container()
+                .ensure_container_exists(&task_attempt)
+                .await?;
+            let wt = std::path::Path::new(&container_ref);
+            let head_oid = deployment.git().get_head_info(wt).ok().map(|h| h.oid);
+            let is_dirty = deployment
+                .container()
+                .is_container_clean(&task_attempt)
+                .await
+                .map(|is_clean| !is_clean)
+                .unwrap_or(false);
+            if head_oid.as_deref() != Some(target_oid.as_str()) || is_dirty {
+                git_reset_needed = true;
+                if is_dirty && !force_when_dirty {
+                    git_reset_applied = false; // cannot reset now
+                } else if let Err(e) =
+                    deployment
+                        .git()
+                        .reset_worktree_to_commit(wt, target_oid, force_when_dirty)
+                {
+                    tracing::error!("Failed to reset worktree: {}", e);
+                    git_reset_applied = false;
+                } else {
+                    git_reset_applied = true;
+                }
+            }
+        }
+    } else {
+        // Skipped git reset; still compute if it would be needed for informational result
+        if let Some(target_oid) = &target_after_oid {
+            let container_ref = deployment
+                .container()
+                .ensure_container_exists(&task_attempt)
+                .await?;
+            let wt = std::path::Path::new(&container_ref);
+            let head_oid = deployment.git().get_head_info(wt).ok().map(|h| h.oid);
+            let is_dirty = deployment
+                .container()
+                .is_container_clean(&task_attempt)
+                .await
+                .map(|is_clean| !is_clean)
+                .unwrap_or(false);
+            if head_oid.as_deref() != Some(target_oid.as_str()) || is_dirty {
+                git_reset_needed = true;
+            }
+            git_reset_applied = false;
+        }
+    }
+
+    Ok(ResponseJson(ApiResponse::success(RestoreAttemptResult {
+        had_later_processes,
+        git_reset_needed,
+        git_reset_applied,
+        target_after_oid,
+    })))
+}
+
 pub async fn get_task_attempt_diff(
     Extension(task_attempt): Extension<TaskAttempt>,
     State(deployment): State<DeploymentImpl>,
@@ -272,6 +384,73 @@ pub async fn get_task_attempt_diff(
     let stream = deployment.container().get_diff(&task_attempt).await?;
 
     Ok(Sse::new(stream.map_err(|e| -> BoxError { e.into() })).keep_alive(KeepAlive::default()))
+}
+
+#[derive(Debug, Serialize, TS)]
+pub struct CommitInfo {
+    pub sha: String,
+    pub subject: String,
+}
+
+pub async fn get_commit_info(
+    Extension(task_attempt): Extension<TaskAttempt>,
+    State(deployment): State<DeploymentImpl>,
+    Query(params): Query<std::collections::HashMap<String, String>>,
+) -> Result<ResponseJson<ApiResponse<CommitInfo>>, ApiError> {
+    let Some(sha) = params.get("sha").cloned() else {
+        return Err(ApiError::TaskAttempt(TaskAttemptError::ValidationError(
+            "Missing sha param".to_string(),
+        )));
+    };
+    let container_ref = deployment
+        .container()
+        .ensure_container_exists(&task_attempt)
+        .await?;
+    let wt = std::path::Path::new(&container_ref);
+    let subject = deployment.git().get_commit_subject(wt, &sha)?;
+    Ok(ResponseJson(ApiResponse::success(CommitInfo {
+        sha,
+        subject,
+    })))
+}
+
+#[derive(Debug, Serialize, TS)]
+pub struct CommitCompareResult {
+    pub head_oid: String,
+    pub target_oid: String,
+    pub ahead_from_head: usize,
+    pub behind_from_head: usize,
+    pub is_linear: bool,
+}
+
+pub async fn compare_commit_to_head(
+    Extension(task_attempt): Extension<TaskAttempt>,
+    State(deployment): State<DeploymentImpl>,
+    Query(params): Query<std::collections::HashMap<String, String>>,
+) -> Result<ResponseJson<ApiResponse<CommitCompareResult>>, ApiError> {
+    let Some(target_oid) = params.get("sha").cloned() else {
+        return Err(ApiError::TaskAttempt(TaskAttemptError::ValidationError(
+            "Missing sha param".to_string(),
+        )));
+    };
+    let container_ref = deployment
+        .container()
+        .ensure_container_exists(&task_attempt)
+        .await?;
+    let wt = std::path::Path::new(&container_ref);
+    let head_info = deployment.git().get_head_info(wt)?;
+    let (ahead_from_head, behind_from_head) =
+        deployment
+            .git()
+            .ahead_behind_commits_by_oid(wt, &head_info.oid, &target_oid)?;
+    let is_linear = behind_from_head == 0;
+    Ok(ResponseJson(ApiResponse::success(CommitCompareResult {
+        head_oid: head_info.oid,
+        target_oid,
+        ahead_from_head,
+        behind_from_head,
+        is_linear,
+    })))
 }
 
 #[axum::debug_handler]
@@ -300,11 +479,11 @@ pub async fn merge_task_attempt(
     let mut commit_message = format!("{} (vibe-kanban {})", ctx.task.title, first_uuid_section);
 
     // Add description on next line if it exists
-    if let Some(description) = &ctx.task.description {
-        if !description.trim().is_empty() {
-            commit_message.push_str("\n\n");
-            commit_message.push_str(description);
-        }
+    if let Some(description) = &ctx.task.description
+        && !description.trim().is_empty()
+    {
+        commit_message.push_str("\n\n");
+        commit_message.push_str(description);
     }
 
     // Get branch name from task attempt
@@ -595,6 +774,9 @@ pub struct BranchStatus {
     pub commits_behind: Option<usize>,
     pub commits_ahead: Option<usize>,
     pub has_uncommitted_changes: Option<bool>,
+    pub head_oid: Option<String>,
+    pub uncommitted_count: Option<usize>,
+    pub untracked_count: Option<usize>,
     pub base_branch_name: String,
     pub remote_commits_behind: Option<usize>,
     pub remote_commits_ahead: Option<usize>,
@@ -618,6 +800,25 @@ pub async fn get_task_attempt_branch_status(
         .await
         .ok()
         .map(|is_clean| !is_clean);
+    let head_oid = {
+        let container_ref = deployment
+            .container()
+            .ensure_container_exists(&task_attempt)
+            .await?;
+        let wt = std::path::Path::new(&container_ref);
+        deployment.git().get_head_info(wt).ok().map(|h| h.oid)
+    };
+    let (uncommitted_count, untracked_count) = {
+        let container_ref = deployment
+            .container()
+            .ensure_container_exists(&task_attempt)
+            .await?;
+        let wt = std::path::Path::new(&container_ref);
+        match deployment.git().get_worktree_change_counts(wt) {
+            Ok((a, b)) => (Some(a), Some(b)),
+            Err(_) => (None, None),
+        }
+    };
 
     let task_branch =
         task_attempt
@@ -645,6 +846,9 @@ pub async fn get_task_attempt_branch_status(
         commits_ahead,
         commits_behind,
         has_uncommitted_changes,
+        head_oid,
+        uncommitted_count,
+        untracked_count,
         remote_commits_ahead: None,
         remote_commits_behind: None,
         merges,
@@ -727,15 +931,11 @@ pub async fn rebase_task_attempt(
         github_config.token(),
     )?;
 
-    if let Some(new_base_branch) = &effective_base_branch {
-        if new_base_branch != &ctx.task_attempt.base_branch {
-            TaskAttempt::update_base_branch(
-                &deployment.db().pool,
-                task_attempt.id,
-                new_base_branch,
-            )
+    if let Some(new_base_branch) = &effective_base_branch
+        && new_base_branch != &ctx.task_attempt.base_branch
+    {
+        TaskAttempt::update_base_branch(&deployment.db().pool, task_attempt.id, new_base_branch)
             .await?;
-        }
     }
 
     Ok(ResponseJson(ApiResponse::success(())))
@@ -879,6 +1079,9 @@ pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
     let task_attempt_id_router = Router::new()
         .route("/", get(get_task_attempt))
         .route("/follow-up", post(follow_up))
+        .route("/restore", post(restore_task_attempt))
+        .route("/commit-info", get(get_commit_info))
+        .route("/commit-compare", get(compare_commit_to_head))
         .route("/start-dev-server", post(start_dev_server))
         .route("/branch-status", get(get_task_attempt_branch_status))
         .route("/diff", get(get_task_attempt_diff))

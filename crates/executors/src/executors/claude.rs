@@ -1,8 +1,9 @@
-use std::{path::PathBuf, process::Stdio, sync::Arc};
+use std::{path::Path, process::Stdio, sync::Arc};
 
 use async_trait::async_trait;
 use command_group::{AsyncCommandGroup, AsyncGroupChild};
 use futures::StreamExt;
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use tokio::{io::AsyncWriteExt, process::Command};
 use ts_rs::TS;
@@ -15,8 +16,8 @@ use utils::{
 };
 
 use crate::{
-    command::CommandBuilder,
-    executors::{ExecutorError, StandardCodingAgentExecutor},
+    command::{CmdOverrides, CommandBuilder, apply_overrides},
+    executors::{AppendPrompt, ExecutorError, StandardCodingAgentExecutor},
     logs::{
         ActionType, FileChange, NormalizedEntry, NormalizedEntryType, TodoItem,
         stderr_processor::normalize_stderr_logs,
@@ -24,30 +25,70 @@ use crate::{
     },
 };
 
-/// An executor that uses Claude CLI to process tasks
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, TS)]
+fn base_command(claude_code_router: bool) -> &'static str {
+    if claude_code_router {
+        "npx -y @musistudio/claude-code-router code"
+    } else {
+        "npx -y @anthropic-ai/claude-code@latest"
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, TS, JsonSchema)]
 pub struct ClaudeCode {
-    pub command: CommandBuilder,
-    pub append_prompt: Option<String>,
-    pub plan: bool,
+    #[serde(default)]
+    pub append_prompt: AppendPrompt,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub claude_code_router: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub plan: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dangerously_skip_permissions: Option<bool>,
+    #[serde(flatten)]
+    pub cmd: CmdOverrides,
+}
+
+impl ClaudeCode {
+    fn build_command_builder(&self) -> CommandBuilder {
+        // If base_command_override is provided and claude_code_router is also set, log a warning
+        if self.cmd.base_command_override.is_some() && self.claude_code_router.is_some() {
+            tracing::warn!(
+                "base_command_override is set, this will override the claude_code_router setting"
+            );
+        }
+
+        let mut builder =
+            CommandBuilder::new(base_command(self.claude_code_router.unwrap_or(false)))
+                .params(["-p"]);
+
+        if self.plan.unwrap_or(false) {
+            builder = builder.extend_params(["--permission-mode=plan"]);
+        }
+        if self.dangerously_skip_permissions.unwrap_or(false) {
+            builder = builder.extend_params(["--dangerously-skip-permissions"]);
+        }
+        builder = builder.extend_params(["--verbose", "--output-format=stream-json"]);
+
+        apply_overrides(builder, &self.cmd)
+    }
 }
 
 #[async_trait]
 impl StandardCodingAgentExecutor for ClaudeCode {
     async fn spawn(
         &self,
-        current_dir: &PathBuf,
+        current_dir: &Path,
         prompt: &str,
     ) -> Result<AsyncGroupChild, ExecutorError> {
         let (shell_cmd, shell_arg) = get_shell_command();
-        let claude_command = if self.plan {
-            let base_command = self.command.build_initial();
+        let command_builder = self.build_command_builder();
+        let base_command = command_builder.build_initial();
+        let claude_command = if self.plan.unwrap_or(false) {
             create_watchkill_script(&base_command)
         } else {
-            self.command.build_initial()
+            base_command
         };
 
-        let combined_prompt = utils::text::combine_prompt(&self.append_prompt, prompt);
+        let combined_prompt = self.append_prompt.combine_prompt(prompt);
 
         let mut command = Command::new(shell_cmd);
         command
@@ -72,23 +113,22 @@ impl StandardCodingAgentExecutor for ClaudeCode {
 
     async fn spawn_follow_up(
         &self,
-        current_dir: &PathBuf,
+        current_dir: &Path,
         prompt: &str,
         session_id: &str,
     ) -> Result<AsyncGroupChild, ExecutorError> {
         let (shell_cmd, shell_arg) = get_shell_command();
+        let command_builder = self.build_command_builder();
         // Build follow-up command with --resume {session_id}
-        let claude_command = if self.plan {
-            let base_command = self
-                .command
-                .build_follow_up(&["--resume".to_string(), session_id.to_string()]);
+        let base_command =
+            command_builder.build_follow_up(&["--resume".to_string(), session_id.to_string()]);
+        let claude_command = if self.plan.unwrap_or(false) {
             create_watchkill_script(&base_command)
         } else {
-            self.command
-                .build_follow_up(&["--resume".to_string(), session_id.to_string()])
+            base_command
         };
 
-        let combined_prompt = utils::text::combine_prompt(&self.append_prompt, prompt);
+        let combined_prompt = self.append_prompt.combine_prompt(prompt);
 
         let mut command = Command::new(shell_cmd);
         command
@@ -111,7 +151,7 @@ impl StandardCodingAgentExecutor for ClaudeCode {
         Ok(child)
     }
 
-    fn normalize_logs(&self, msg_store: Arc<MsgStore>, current_dir: &PathBuf) {
+    fn normalize_logs(&self, msg_store: Arc<MsgStore>, current_dir: &Path) {
         let entry_index_provider = EntryIndexProvider::start_from(&msg_store);
 
         // Process stdout logs (Claude's JSON output)
@@ -125,10 +165,15 @@ impl StandardCodingAgentExecutor for ClaudeCode {
         // Process stderr logs using the standard stderr processor
         normalize_stderr_logs(msg_store, entry_index_provider);
     }
+
+    // MCP configuration methods
+    fn default_mcp_config_path(&self) -> Option<std::path::PathBuf> {
+        dirs::home_dir().map(|home| home.join(".claude.json"))
+    }
 }
 
 fn create_watchkill_script(command: &str) -> String {
-    let claude_plan_stop_indicator = concat!("Exit ", "plan mode?"); // Use concat!() as a workaround to avoid killing plan mode when this file is read.
+    let claude_plan_stop_indicator = concat!("Exit ", "plan mode?");
     format!(
         r#"#!/usr/bin/env bash
 set -euo pipefail
@@ -184,11 +229,11 @@ impl ClaudeLogProcessor {
     /// Process raw logs and convert them to normalized entries with patches
     pub fn process_logs(
         msg_store: Arc<MsgStore>,
-        current_dir: &PathBuf,
+        current_dir: &Path,
         entry_index_provider: EntryIndexProvider,
         strategy: HistoryStrategy,
     ) {
-        let current_dir_clone = current_dir.clone();
+        let current_dir_clone = current_dir.to_owned();
         tokio::spawn(async move {
             let mut stream = msg_store.history_plus_stream();
             let mut buffer = String::new();
@@ -501,8 +546,8 @@ impl ClaudeLogProcessor {
                                 }
                                 _ => {
                                     // Convert to normalized entries and create patches for other kinds
-                                    for entry in processor
-                                        .to_normalized_entries(&claude_json, &worktree_path)
+                                    for entry in
+                                        processor.normalize_entries(&claude_json, &worktree_path)
                                     {
                                         let patch_id = entry_index_provider.next();
                                         let patch = ConversationPatch::add_normalized_entry(
@@ -519,7 +564,7 @@ impl ClaudeLogProcessor {
                                 let entry = NormalizedEntry {
                                     timestamp: None,
                                     entry_type: NormalizedEntryType::SystemMessage,
-                                    content: format!("Raw output: {trimmed}"),
+                                    content: trimmed.to_string(),
                                     metadata: None,
                                 };
 
@@ -541,7 +586,7 @@ impl ClaudeLogProcessor {
                 let entry = NormalizedEntry {
                     timestamp: None,
                     entry_type: NormalizedEntryType::SystemMessage,
-                    content: format!("Raw output: {}", buffer.trim()),
+                    content: buffer.trim().to_string(),
                     metadata: None,
                 };
 
@@ -566,7 +611,7 @@ impl ClaudeLogProcessor {
     }
 
     /// Convert Claude JSON to normalized entries
-    fn to_normalized_entries(
+    fn normalize_entries(
         &mut self,
         claude_json: &ClaudeJson,
         worktree_path: &str,
@@ -1308,13 +1353,13 @@ mod tests {
             Some("abc123".to_string())
         );
 
-        let entries = ClaudeLogProcessor::new().to_normalized_entries(&parsed, "");
+        let entries = ClaudeLogProcessor::new().normalize_entries(&parsed, "");
         assert_eq!(entries.len(), 0);
 
         let assistant_json = r#"
         {"type":"assistant","message":{"type":"message","role":"assistant","model":"claude-sonnet-4-20250514","content":[{"type":"text","text":"Hi! I'm Claude Code."}]}}"#;
         let parsed: ClaudeJson = serde_json::from_str(assistant_json).unwrap();
-        let entries = ClaudeLogProcessor::new().to_normalized_entries(&parsed, "");
+        let entries = ClaudeLogProcessor::new().normalize_entries(&parsed, "");
 
         assert_eq!(entries.len(), 2);
         assert!(matches!(
@@ -1332,7 +1377,7 @@ mod tests {
         let assistant_json = r#"{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Hello world"}]},"session_id":"abc123"}"#;
         let parsed: ClaudeJson = serde_json::from_str(assistant_json).unwrap();
 
-        let entries = ClaudeLogProcessor::new().to_normalized_entries(&parsed, "");
+        let entries = ClaudeLogProcessor::new().normalize_entries(&parsed, "");
         assert_eq!(entries.len(), 1);
         assert!(matches!(
             entries[0].entry_type,
@@ -1346,7 +1391,7 @@ mod tests {
         let result_json = r#"{"type":"result","subtype":"success","is_error":false,"duration_ms":6059,"result":"Final result"}"#;
         let parsed: ClaudeJson = serde_json::from_str(result_json).unwrap();
 
-        let entries = ClaudeLogProcessor::new().to_normalized_entries(&parsed, "");
+        let entries = ClaudeLogProcessor::new().normalize_entries(&parsed, "");
         assert_eq!(entries.len(), 0); // Should be ignored like in old implementation
     }
 
@@ -1355,7 +1400,7 @@ mod tests {
         let thinking_json = r#"{"type":"assistant","message":{"role":"assistant","content":[{"type":"thinking","thinking":"Let me think about this..."}]}}"#;
         let parsed: ClaudeJson = serde_json::from_str(thinking_json).unwrap();
 
-        let entries = ClaudeLogProcessor::new().to_normalized_entries(&parsed, "");
+        let entries = ClaudeLogProcessor::new().normalize_entries(&parsed, "");
         assert_eq!(entries.len(), 1);
         assert!(matches!(
             entries[0].entry_type,
@@ -1455,9 +1500,14 @@ mod tests {
         use utils::msg_store::MsgStore;
 
         let executor = ClaudeCode {
-            command: CommandBuilder::new(""),
-            plan: false,
-            append_prompt: None,
+            claude_code_router: Some(false),
+            plan: None,
+            append_prompt: AppendPrompt::default(),
+            dangerously_skip_permissions: None,
+            cmd: crate::command::CmdOverrides {
+                base_command_override: None,
+                additional_params: None,
+            },
         };
         let msg_store = Arc::new(MsgStore::new());
         let current_dir = std::path::PathBuf::from("/tmp/test-worktree");
@@ -1520,7 +1570,7 @@ mod tests {
             }
         }"#;
         let parsed: ClaudeJson = serde_json::from_str(assistant_with_create).unwrap();
-        let entries = ClaudeLogProcessor::new().to_normalized_entries(&parsed, "/tmp/work");
+        let entries = ClaudeLogProcessor::new().normalize_entries(&parsed, "/tmp/work");
         assert_eq!(entries.len(), 1);
         match &entries[0].entry_type {
             NormalizedEntryType::ToolUse { action_type, .. } => match action_type {
@@ -1541,7 +1591,7 @@ mod tests {
             }
         }"#;
         let parsed_edit: ClaudeJson = serde_json::from_str(assistant_with_edit).unwrap();
-        let entries = ClaudeLogProcessor::new().to_normalized_entries(&parsed_edit, "/tmp/work");
+        let entries = ClaudeLogProcessor::new().normalize_entries(&parsed_edit, "/tmp/work");
         assert_eq!(entries.len(), 1);
         match &entries[0].entry_type {
             NormalizedEntryType::ToolUse { action_type, .. } => match action_type {
@@ -1565,7 +1615,7 @@ mod tests {
             }
         }"#;
         let parsed: ClaudeJson = serde_json::from_str(oracle_json).unwrap();
-        let entries = ClaudeLogProcessor::new().to_normalized_entries(&parsed, "/tmp/work");
+        let entries = ClaudeLogProcessor::new().normalize_entries(&parsed, "/tmp/work");
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].content, "Oracle: `Assess project status`");
 
@@ -1580,7 +1630,7 @@ mod tests {
             }
         }"#;
         let parsed: ClaudeJson = serde_json::from_str(mermaid_json).unwrap();
-        let entries = ClaudeLogProcessor::new().to_normalized_entries(&parsed, "/tmp/work");
+        let entries = ClaudeLogProcessor::new().normalize_entries(&parsed, "/tmp/work");
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].content, "Mermaid diagram");
 
@@ -1595,7 +1645,7 @@ mod tests {
             }
         }"#;
         let parsed: ClaudeJson = serde_json::from_str(csa_json).unwrap();
-        let entries = ClaudeLogProcessor::new().to_normalized_entries(&parsed, "/tmp/work");
+        let entries = ClaudeLogProcessor::new().normalize_entries(&parsed, "/tmp/work");
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].content, "Codebase search: `TODO markers`");
 
@@ -1610,7 +1660,7 @@ mod tests {
             }
         }"#;
         let parsed: ClaudeJson = serde_json::from_str(undo_json).unwrap();
-        let entries = ClaudeLogProcessor::new().to_normalized_entries(&parsed, "/tmp/work");
+        let entries = ClaudeLogProcessor::new().normalize_entries(&parsed, "/tmp/work");
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].content, "Undo edit: `README.md`");
     }
@@ -1628,7 +1678,7 @@ mod tests {
             }
         }"#;
         let parsed: ClaudeJson = serde_json::from_str(bash_json).unwrap();
-        let entries = ClaudeLogProcessor::new().to_normalized_entries(&parsed, "/tmp/work");
+        let entries = ClaudeLogProcessor::new().normalize_entries(&parsed, "/tmp/work");
         assert_eq!(entries.len(), 1);
         // Content should display the command in backticks
         assert_eq!(entries[0].content, "`echo hello`");
@@ -1644,7 +1694,7 @@ mod tests {
             }
         }"#;
         let parsed: ClaudeJson = serde_json::from_str(task_json).unwrap();
-        let entries = ClaudeLogProcessor::new().to_normalized_entries(&parsed, "/tmp/work");
+        let entries = ClaudeLogProcessor::new().normalize_entries(&parsed, "/tmp/work");
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].content, "Task: `Add header to README`");
     }
@@ -1666,7 +1716,7 @@ mod tests {
             }
         }"#;
         let parsed: ClaudeJson = serde_json::from_str(with_desc).unwrap();
-        let entries = ClaudeLogProcessor::new().to_normalized_entries(&parsed, "/tmp/work");
+        let entries = ClaudeLogProcessor::new().normalize_entries(&parsed, "/tmp/work");
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].content, "Task: `Primary description`");
 
@@ -1684,7 +1734,7 @@ mod tests {
             }
         }"#;
         let parsed: ClaudeJson = serde_json::from_str(no_desc).unwrap();
-        let entries = ClaudeLogProcessor::new().to_normalized_entries(&parsed, "/tmp/work");
+        let entries = ClaudeLogProcessor::new().normalize_entries(&parsed, "/tmp/work");
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].content, "Task: `Only prompt`");
     }
@@ -1701,7 +1751,7 @@ mod tests {
         );
 
         // ToolResult messages should be ignored (produce no entries) until proper support is added
-        let entries = ClaudeLogProcessor::new().to_normalized_entries(&parsed, "");
+        let entries = ClaudeLogProcessor::new().normalize_entries(&parsed, "");
         assert_eq!(entries.len(), 0);
     }
 
@@ -1711,7 +1761,7 @@ mod tests {
         let parsed: ClaudeJson = serde_json::from_str(assistant_with_tool_result).unwrap();
 
         // ToolResult content items should be ignored (produce no entries) until proper support is added
-        let entries = ClaudeLogProcessor::new().to_normalized_entries(&parsed, "");
+        let entries = ClaudeLogProcessor::new().normalize_entries(&parsed, "");
         assert_eq!(entries.len(), 0);
     }
 
@@ -1720,7 +1770,7 @@ mod tests {
         let complex_assistant_json = r#"{"type":"assistant","message":{"role":"assistant","content":[{"type":"thinking","thinking":"I need to read the file first"},{"type":"text","text":"I'll help you with that"},{"type":"tool_result","tool_use_id":"tool_789","content":"Success","is_error":false}]}}"#;
         let parsed: ClaudeJson = serde_json::from_str(complex_assistant_json).unwrap();
 
-        let entries = ClaudeLogProcessor::new().to_normalized_entries(&parsed, "");
+        let entries = ClaudeLogProcessor::new().normalize_entries(&parsed, "");
         // Only thinking and text entries should be processed, tool_result ignored
         assert_eq!(entries.len(), 2);
 

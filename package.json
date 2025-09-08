@@ -1,6 +1,6 @@
 {
   "name": "@kazuph/vkanban",
-  "version": "0.0.70",
+  "version": "0.0.78",
   "private": true,
   "bin": {
     "vkanban": "npx-cli/bin/cli.js"
@@ -10,7 +10,6 @@
     "npx-cli/dist/**"
   ],
   "scripts": {
-    "test": "pnpm test:e2e",
     "check": "npm run frontend:check && npm run backend:check",
     "dev": "export VIBE_KANBAN_ASSET_MODE=prod && export HOST=0.0.0.0 && export FRONTEND_PORT=$(node scripts/setup-dev-environment.js frontend) && export BACKEND_PORT=$(node scripts/setup-dev-environment.js backend) && concurrently \"npm run backend:dev:watch\" \"npm run frontend:dev\"",
     "test:npm": "./test-npm-package.sh",
@@ -24,16 +23,20 @@
     "prepare-db": "node scripts/prepare-db.js",
     "build:npx": "bash ./local-build.sh",
     "prepack": "npm run build:npx",
+    "test": "pnpm test:e2e",
     "test:e2e": "playwright test",
     "test:e2e:ci": "PLAYWRIGHT_BROWSERS_PATH=.playwright-browsers playwright test --reporter=dot",
     "test:e2e:ghost": "nohup pnpm test:e2e:ci > e2e-playwright.log 2>&1 & echo $! > e2e-playwright.pid && echo 'E2E started as PID '$(cat e2e-playwright.pid)",
     "test:e2e:headed": "E2E_HEADLESS=false PLAYWRIGHT_BROWSERS_PATH=.playwright-browsers playwright test"
   },
   "devDependencies": {
-    "@playwright/test": "^1.48.0",
     "@tailwindcss/container-queries": "^0.1.1",
     "concurrently": "^8.2.2",
-    "vite": "^6.3.5"
+    "vite": "^6.3.5",
+    "@playwright/test": "^1.48.0"
+  },
+  "dependencies": {
+    "@ebay/nice-modal-react": "^1.2.13"
   },
   "engines": {
     "node": ">=18",

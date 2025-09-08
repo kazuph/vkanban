@@ -1,24 +1,30 @@
+use std::path::PathBuf;
+
 use axum::{
+    BoxError, Extension, Json, Router,
     extract::{Query, State},
+    http::StatusCode,
     middleware::from_fn_with_state,
-    response::Json as ResponseJson,
+    response::{Json as ResponseJson, Sse, sse::KeepAlive},
     routing::{get, post},
-    Extension, Json, Router,
 };
 use db::models::{
     image::TaskImage,
     project::Project,
     task::{CreateTask, Task, TaskWithAttemptStatus, UpdateTask},
-    task_attempt::{CreateTaskAttempt, TaskAttempt, TaskAttemptError},
+    task_attempt::{CreateTaskAttempt, TaskAttempt},
 };
 use deployment::Deployment;
+use futures_util::TryStreamExt;
 use serde::Deserialize;
-use services::services::container::ContainerService;
+use services::services::container::{
+    ContainerService, WorktreeCleanupData, cleanup_worktrees_direct,
+};
 use sqlx::Error as SqlxError;
 use utils::response::ApiResponse;
 use uuid::Uuid;
 
-use crate::{error::ApiError, middleware::load_task_middleware, DeploymentImpl};
+use crate::{DeploymentImpl, error::ApiError, middleware::load_task_middleware};
 
 #[derive(Debug, Deserialize)]
 pub struct TaskQuery {
@@ -34,6 +40,22 @@ pub async fn get_tasks(
             .await?;
 
     Ok(ResponseJson(ApiResponse::success(tasks)))
+}
+
+pub async fn stream_tasks(
+    State(deployment): State<DeploymentImpl>,
+    Query(query): Query<TaskQuery>,
+) -> Result<
+    Sse<impl futures_util::Stream<Item = Result<axum::response::sse::Event, BoxError>>>,
+    axum::http::StatusCode,
+> {
+    let stream = deployment
+        .events()
+        .stream_tasks_for_project(query.project_id)
+        .await
+        .map_err(|_| axum::http::StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    Ok(Sse::new(stream.map_err(|e| -> BoxError { e.into() })).keep_alive(KeepAlive::default()))
 }
 
 pub async fn get_task(
@@ -100,27 +122,18 @@ pub async fn create_task_and_start(
         .await;
 
     // use the default executor profile and the current branch for the task attempt
-    let default_profile_variant = deployment.config().read().await.profile.clone();
+    let executor_profile_id = deployment.config().read().await.executor_profile.clone();
     let project = Project::find_by_id(&deployment.db().pool, payload.project_id)
         .await?
         .ok_or(ApiError::Database(SqlxError::RowNotFound))?;
     let branch = deployment
         .git()
         .get_current_branch(&project.git_repo_path)?;
-    let profile_label = executors::profile::ProfileConfigs::get_cached()
-        .get_profile(&default_profile_variant.profile)
-        .map(|profile| profile.default.label.clone())
-        .ok_or_else(|| {
-            ApiError::TaskAttempt(TaskAttemptError::ValidationError(format!(
-                "Profile not found: {:?}",
-                default_profile_variant
-            )))
-        })?;
 
     let task_attempt = TaskAttempt::create(
         &deployment.db().pool,
         &CreateTaskAttempt {
-            profile: profile_label.clone(),
+            executor: executor_profile_id.executor,
             base_branch: branch,
         },
         task.id,
@@ -128,15 +141,15 @@ pub async fn create_task_and_start(
     .await?;
     let execution_process = deployment
         .container()
-        .start_attempt(&task_attempt, default_profile_variant.clone())
+        .start_attempt(&task_attempt, executor_profile_id.clone())
         .await?;
     deployment
         .track_if_analytics_allowed(
             "task_attempt_started",
             serde_json::json!({
                 "task_id": task.id.to_string(),
-                "profile": &profile_label,
-                "variant": &default_profile_variant,
+                "executor": &executor_profile_id.executor,
+                "variant": &executor_profile_id.variant,
                 "attempt_id": task_attempt.id.to_string(),
             }),
         )
@@ -159,7 +172,7 @@ pub async fn create_task_and_start(
         has_in_progress_attempt: true,
         has_merged_attempt: false,
         last_attempt_failed: false,
-        profile: task_attempt.profile,
+        executor: task_attempt.executor,
     })))
 }
 
@@ -198,32 +211,76 @@ pub async fn update_task(
 pub async fn delete_task(
     Extension(task): Extension<Task>,
     State(deployment): State<DeploymentImpl>,
-) -> Result<ResponseJson<ApiResponse<()>>, ApiError> {
+) -> Result<(StatusCode, ResponseJson<ApiResponse<()>>), ApiError> {
+    // Validate no running execution processes
+    if deployment
+        .container()
+        .has_running_processes(task.id)
+        .await?
+    {
+        return Err(ApiError::Conflict("Task has running execution processes. Please wait for them to complete or stop them first.".to_string()));
+    }
+
+    // Gather task attempts data needed for background cleanup
     let attempts = TaskAttempt::fetch_all(&deployment.db().pool, Some(task.id))
         .await
-        .unwrap_or_default();
-    // Delete all attempts including their containers
-    for attempt in attempts {
-        deployment
-            .container()
-            .delete(&attempt)
-            .await
-            .unwrap_or_else(|e| {
-                tracing::warn!(
-                    "Failed to delete task attempt {} for task {}: {}",
-                    attempt.id,
-                    task.id,
-                    e
-                );
-            });
-    }
+        .map_err(|e| {
+            tracing::error!("Failed to fetch task attempts for task {}: {}", task.id, e);
+            ApiError::TaskAttempt(e)
+        })?;
+
+    // Gather cleanup data before deletion
+    let project = task
+        .parent_project(&deployment.db().pool)
+        .await?
+        .ok_or_else(|| ApiError::Database(SqlxError::RowNotFound))?;
+
+    let cleanup_data: Vec<WorktreeCleanupData> = attempts
+        .iter()
+        .filter_map(|attempt| {
+            attempt
+                .container_ref
+                .as_ref()
+                .map(|worktree_path| WorktreeCleanupData {
+                    attempt_id: attempt.id,
+                    worktree_path: PathBuf::from(worktree_path),
+                    git_repo_path: Some(project.git_repo_path.clone()),
+                })
+        })
+        .collect();
+
+    // Delete task from database (FK CASCADE will handle task_attempts)
     let rows_affected = Task::delete(&deployment.db().pool, task.id).await?;
 
     if rows_affected == 0 {
-        Err(ApiError::Database(SqlxError::RowNotFound))
-    } else {
-        Ok(ResponseJson(ApiResponse::success(())))
+        return Err(ApiError::Database(SqlxError::RowNotFound));
     }
+
+    // Spawn background worktree cleanup task
+    let task_id = task.id;
+    tokio::spawn(async move {
+        let span = tracing::info_span!("background_worktree_cleanup", task_id = %task_id);
+        let _enter = span.enter();
+
+        tracing::info!(
+            "Starting background cleanup for task {} ({} worktrees)",
+            task_id,
+            cleanup_data.len()
+        );
+
+        if let Err(e) = cleanup_worktrees_direct(&cleanup_data).await {
+            tracing::error!(
+                "Background worktree cleanup failed for task {}: {}",
+                task_id,
+                e
+            );
+        } else {
+            tracing::info!("Background cleanup completed for task {}", task_id);
+        }
+    });
+
+    // Return 202 Accepted to indicate deletion was scheduled
+    Ok((StatusCode::ACCEPTED, ResponseJson(ApiResponse::success(()))))
 }
 
 pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
@@ -233,6 +290,7 @@ pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
 
     let inner = Router::new()
         .route("/", get(get_tasks).post(create_task))
+        .route("/stream", get(stream_tasks))
         .route("/create-and-start", post(create_task_and_start))
         .nest("/{task_id}", task_id_router);
 

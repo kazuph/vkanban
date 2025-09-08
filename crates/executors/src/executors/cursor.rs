@@ -1,9 +1,10 @@
 use core::str;
-use std::{path::PathBuf, process::Stdio, sync::Arc, time::Duration};
+use std::{path::Path, process::Stdio, sync::Arc, time::Duration};
 
 use async_trait::async_trait;
 use command_group::{AsyncCommandGroup, AsyncGroupChild};
 use futures::StreamExt;
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use tokio::{io::AsyncWriteExt, process::Command};
 use ts_rs::TS;
@@ -14,12 +15,12 @@ use utils::{
     },
     msg_store::MsgStore,
     path::make_path_relative,
-    shell::get_shell_command,
+    shell::{get_shell_command, resolve_executable_path},
 };
 
 use crate::{
-    command::CommandBuilder,
-    executors::{ExecutorError, StandardCodingAgentExecutor},
+    command::{CmdOverrides, CommandBuilder, apply_overrides},
+    executors::{AppendPrompt, ExecutorError, StandardCodingAgentExecutor},
     logs::{
         ActionType, FileChange, NormalizedEntry, NormalizedEntryType, TodoItem,
         plain_text_processor::PlainTextLogProcessor,
@@ -27,24 +28,46 @@ use crate::{
     },
 };
 
-/// Executor for running Cursor CLI and normalizing its JSONL stream
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, TS)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, TS, JsonSchema)]
 pub struct Cursor {
-    pub command: CommandBuilder,
-    pub append_prompt: Option<String>,
+    #[serde(default)]
+    pub append_prompt: AppendPrompt,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub force: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
+    #[serde(flatten)]
+    pub cmd: CmdOverrides,
+}
+
+impl Cursor {
+    fn build_command_builder(&self) -> CommandBuilder {
+        let mut builder =
+            CommandBuilder::new("cursor-agent").params(["-p", "--output-format=stream-json"]);
+
+        if self.force.unwrap_or(false) {
+            builder = builder.extend_params(["--force"]);
+        }
+
+        if let Some(model) = &self.model {
+            builder = builder.extend_params(["--model", model]);
+        }
+
+        apply_overrides(builder, &self.cmd)
+    }
 }
 
 #[async_trait]
 impl StandardCodingAgentExecutor for Cursor {
     async fn spawn(
         &self,
-        current_dir: &PathBuf,
+        current_dir: &Path,
         prompt: &str,
     ) -> Result<AsyncGroupChild, ExecutorError> {
         let (shell_cmd, shell_arg) = get_shell_command();
-        let agent_cmd = self.command.build_initial();
+        let agent_cmd = self.build_command_builder().build_initial();
 
-        let combined_prompt = utils::text::combine_prompt(&self.append_prompt, prompt);
+        let combined_prompt = self.append_prompt.combine_prompt(prompt);
 
         let mut command = Command::new(shell_cmd);
         command
@@ -68,16 +91,16 @@ impl StandardCodingAgentExecutor for Cursor {
 
     async fn spawn_follow_up(
         &self,
-        current_dir: &PathBuf,
+        current_dir: &Path,
         prompt: &str,
         session_id: &str,
     ) -> Result<AsyncGroupChild, ExecutorError> {
         let (shell_cmd, shell_arg) = get_shell_command();
         let agent_cmd = self
-            .command
+            .build_command_builder()
             .build_follow_up(&["--resume".to_string(), session_id.to_string()]);
 
-        let combined_prompt = utils::text::combine_prompt(&self.append_prompt, prompt);
+        let combined_prompt = self.append_prompt.combine_prompt(prompt);
 
         let mut command = Command::new(shell_cmd);
         command
@@ -99,11 +122,11 @@ impl StandardCodingAgentExecutor for Cursor {
         Ok(child)
     }
 
-    fn normalize_logs(&self, msg_store: Arc<MsgStore>, worktree_path: &PathBuf) {
+    fn normalize_logs(&self, msg_store: Arc<MsgStore>, worktree_path: &Path) {
         let entry_index_provider = EntryIndexProvider::start_from(&msg_store);
 
         // Process Cursor stdout JSONL with typed serde models
-        let current_dir = worktree_path.clone();
+        let current_dir = worktree_path.to_path_buf();
         tokio::spawn(async move {
             let mut lines = msg_store.stdout_lines_stream();
 
@@ -367,7 +390,7 @@ impl StandardCodingAgentExecutor for Cursor {
                         let entry = NormalizedEntry {
                             timestamp: None,
                             entry_type: NormalizedEntryType::SystemMessage,
-                            content: format!("Raw output: `{line}`"),
+                            content: line,
                             metadata: None,
                         };
                         let id = entry_index_provider.next();
@@ -376,6 +399,15 @@ impl StandardCodingAgentExecutor for Cursor {
                 }
             }
         });
+    }
+
+    // MCP configuration methods
+    fn default_mcp_config_path(&self) -> Option<std::path::PathBuf> {
+        dirs::home_dir().map(|home| home.join(".cursor").join("mcp.json"))
+    }
+
+    async fn check_availability(&self) -> bool {
+        resolve_executable_path("cursor-agent").is_some()
     }
 }
 
@@ -1039,8 +1071,11 @@ mod tests {
     async fn test_cursor_streaming_patch_generation() {
         // Avoid relying on feature flag in tests; construct with a dummy command
         let executor = Cursor {
-            command: CommandBuilder::new(""),
-            append_prompt: None,
+            // No command field needed anymore
+            append_prompt: AppendPrompt::default(),
+            force: None,
+            model: None,
+            cmd: Default::default(),
         };
         let msg_store = Arc::new(MsgStore::new());
         let current_dir = std::path::PathBuf::from("/tmp/test-worktree");

@@ -11,7 +11,6 @@ import {
   FolderOpen,
   Settings,
   BookOpen,
-  Server,
   MessageCircleQuestion,
   Menu,
   Plus,
@@ -19,13 +18,13 @@ import {
 import { Logo } from '@/components/logo';
 import { SearchBar } from '@/components/search-bar';
 import { useSearch } from '@/contexts/search-context';
-import { useTaskDialog } from '@/contexts/task-dialog-context';
+import { openTaskForm } from '@/lib/openTaskForm';
 import { useProject } from '@/contexts/project-context';
-import { projectsApi } from '@/lib/api';
+import { showProjectForm } from '@/lib/modals';
+import { useOpenProjectInEditor } from '@/hooks/useOpenProjectInEditor';
 
 const INTERNAL_NAV = [
   { label: 'Projects', icon: FolderOpen, to: '/projects' },
-  { label: 'MCP Servers', icon: Server, to: '/mcp-servers' },
   { label: 'Settings', icon: Settings, to: '/settings' },
 ];
 
@@ -46,14 +45,24 @@ export function Navbar() {
   const location = useLocation();
   const { projectId, project } = useProject();
   const { query, setQuery, active, clear } = useSearch();
-  const { openCreate } = useTaskDialog();
+  const handleOpenInEditor = useOpenProjectInEditor(project || null);
 
-  const handleOpenInIDE = async () => {
-    if (!projectId) return;
+  const handleCreateTask = () => {
+    if (projectId) {
+      openTaskForm({ projectId });
+    }
+  };
+
+  const handleOpenInIDE = () => {
+    handleOpenInEditor();
+  };
+
+  const handleProjectSettings = async () => {
     try {
-      await projectsApi.openEditor(projectId);
-    } catch (err) {
-      console.error('Failed to open project in IDE:', err);
+      await showProjectForm({ project });
+      // Settings saved successfully - no additional action needed
+    } catch (error) {
+      // User cancelled - do nothing
     }
   };
 
@@ -105,7 +114,15 @@ export function Navbar() {
                 <Button
                   variant="ghost"
                   size="icon"
-                  onClick={() => openCreate()}
+                  onClick={handleProjectSettings}
+                  aria-label="Project settings"
+                >
+                  <Settings className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={handleCreateTask}
                   aria-label="Create new task"
                 >
                   <Plus className="h-4 w-4" />
@@ -125,7 +142,7 @@ export function Navbar() {
 
               <DropdownMenuContent align="end">
                 {INTERNAL_NAV.map((item) => {
-                  const active = location.pathname === item.to;
+                  const active = location.pathname.startsWith(item.to);
                   const Icon = item.icon;
                   return (
                     <DropdownMenuItem

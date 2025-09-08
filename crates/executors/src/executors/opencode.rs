@@ -1,4 +1,9 @@
-use std::{fmt, path::PathBuf, process::Stdio, sync::Arc};
+use std::{
+    fmt,
+    path::{Path, PathBuf},
+    process::Stdio,
+    sync::Arc,
+};
 
 use async_trait::async_trait;
 use command_group::{AsyncCommandGroup, AsyncGroupChild};
@@ -6,6 +11,7 @@ use fork_stream::StreamExt as _;
 use futures::{StreamExt, future::ready, stream::BoxStream};
 use lazy_static::lazy_static;
 use regex::Regex;
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use tokio::{io::AsyncWriteExt, process::Command};
 use ts_rs::TS;
@@ -15,8 +21,8 @@ use utils::{
 };
 
 use crate::{
-    command::CommandBuilder,
-    executors::{ExecutorError, StandardCodingAgentExecutor},
+    command::{CmdOverrides, CommandBuilder, apply_overrides},
+    executors::{AppendPrompt, ExecutorError, StandardCodingAgentExecutor},
     logs::{
         ActionType, FileChange, NormalizedEntry, NormalizedEntryType, TodoItem,
         plain_text_processor::{MessageBoundary, PlainTextLogProcessor},
@@ -24,24 +30,46 @@ use crate::{
     },
 };
 
-/// An executor that uses OpenCode to process tasks
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, TS)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, TS, JsonSchema)]
 pub struct Opencode {
-    pub command: CommandBuilder,
-    pub append_prompt: Option<String>,
+    #[serde(default)]
+    pub append_prompt: AppendPrompt,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agent: Option<String>,
+    #[serde(flatten)]
+    pub cmd: CmdOverrides,
+}
+
+impl Opencode {
+    fn build_command_builder(&self) -> CommandBuilder {
+        let mut builder =
+            CommandBuilder::new("npx -y opencode-ai@latest run").params(["--print-logs"]);
+
+        if let Some(model) = &self.model {
+            builder = builder.extend_params(["--model", model]);
+        }
+
+        if let Some(agent) = &self.agent {
+            builder = builder.extend_params(["--agent", agent]);
+        }
+
+        apply_overrides(builder, &self.cmd)
+    }
 }
 
 #[async_trait]
 impl StandardCodingAgentExecutor for Opencode {
     async fn spawn(
         &self,
-        current_dir: &PathBuf,
+        current_dir: &Path,
         prompt: &str,
     ) -> Result<AsyncGroupChild, ExecutorError> {
         let (shell_cmd, shell_arg) = get_shell_command();
-        let opencode_command = self.command.build_initial();
+        let opencode_command = self.build_command_builder().build_initial();
 
-        let combined_prompt = utils::text::combine_prompt(&self.append_prompt, prompt);
+        let combined_prompt = self.append_prompt.combine_prompt(prompt);
 
         let mut command = Command::new(shell_cmd);
         command
@@ -67,16 +95,16 @@ impl StandardCodingAgentExecutor for Opencode {
 
     async fn spawn_follow_up(
         &self,
-        current_dir: &PathBuf,
+        current_dir: &Path,
         prompt: &str,
         session_id: &str,
     ) -> Result<AsyncGroupChild, ExecutorError> {
         let (shell_cmd, shell_arg) = get_shell_command();
         let opencode_command = self
-            .command
+            .build_command_builder()
             .build_follow_up(&["--session".to_string(), session_id.to_string()]);
 
-        let combined_prompt = utils::text::combine_prompt(&self.append_prompt, prompt);
+        let combined_prompt = self.append_prompt.combine_prompt(prompt);
 
         let mut command = Command::new(shell_cmd);
         command
@@ -107,9 +135,8 @@ impl StandardCodingAgentExecutor for Opencode {
     /// 2. Error log recognition thread: read by line, identify error log lines, store them as error messages.
     /// 3. Main normalizer thread: read stderr by line, filter out log lines, send lines (with '\n' appended) to plain text normalizer,
     ///    then define predicate for split and create appropriate normalized entry (either assistant or tool call).
-    fn normalize_logs(&self, msg_store: Arc<MsgStore>, worktree_path: &PathBuf) {
+    fn normalize_logs(&self, msg_store: Arc<MsgStore>, worktree_path: &Path) {
         let entry_index_counter = EntryIndexProvider::start_from(&msg_store);
-        let worktree_path = worktree_path.clone();
 
         let stderr_lines = msg_store
             .stderr_lines_stream()
@@ -146,10 +173,22 @@ impl StandardCodingAgentExecutor for Opencode {
         // Normalize agent logs
         tokio::spawn(Self::process_agent_logs(
             agent_logs,
-            worktree_path,
+            worktree_path.to_path_buf(),
             entry_index_counter,
             msg_store,
         ));
+    }
+
+    // MCP configuration methods
+    fn default_mcp_config_path(&self) -> Option<std::path::PathBuf> {
+        #[cfg(unix)]
+        {
+            xdg::BaseDirectories::with_prefix("opencode").get_config_file("opencode.json")
+        }
+        #[cfg(not(unix))]
+        {
+            dirs::config_dir().map(|config| config.join("opencode").join("opencode.json"))
+        }
     }
 }
 impl Opencode {
@@ -212,7 +251,7 @@ impl Opencode {
     }
 
     /// Create normalized entry from content
-    pub fn create_normalized_entry(content: String, worktree_path: &PathBuf) -> NormalizedEntry {
+    pub fn create_normalized_entry(content: String, worktree_path: &Path) -> NormalizedEntry {
         // Check if this is a tool call
         if let Some(tool_call) = ToolCall::parse(&content) {
             let tool_name = tool_call.tool.name();
@@ -344,7 +383,7 @@ pub enum Tool {
 }
 
 /// TODO information structure
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, TS)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, TS, JsonSchema)]
 pub struct TodoInfo {
     pub content: String,
     pub status: String,
@@ -353,7 +392,7 @@ pub struct TodoInfo {
 }
 
 /// Web fetch format options
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, TS)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, TS, JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum WebFetchFormat {
     Text,
