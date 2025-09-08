@@ -18,6 +18,10 @@
   - `make run`/`make start` は、実行中の repo を自動的に `/repos/<org>/<repo>` にマウントします。
   - 自動検出: `REPO_ABS_PATH` は `git rev-parse --show-toplevel`、`REPO_CANON` は `git remote origin` から `<org>/<repo>` を推定。
   - 明示指定も可能: `REPO_ABS_PATH=/path/to/project REPO_CANON=myorg/myrepo make run`
+  - 直接 `docker compose up --build` する場合、未設定でも動く既定値あり：
+    - `REPO_ABS_PATH` 既定 `.`（compose.yml のあるディレクトリ）
+    - `REPO_CANON` 既定 `kazuph/vkanban`
+    - 別リポジトリを使う場合は、上記 2 変数を環境に指定して実行してください。
 
 ### よくある問題と対処
 - PermissionDenied で起動失敗: `./data` 配下のファイルが root 所有。
