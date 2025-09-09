@@ -61,7 +61,8 @@ function getBackendPort(): number {
 export default defineConfig({
   plugins: [
     react(),
-    sentryVitePlugin({ org: "bloop-ai", project: "vibe-kanban" }),
+    // Disable Sentry plugin telemetry in local/dev by default
+    sentryVitePlugin({ org: "bloop-ai", project: "vibe-kanban", telemetry: false }),
     executorSchemasPlugin(),
   ],
   resolve: {
