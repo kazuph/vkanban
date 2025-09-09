@@ -340,22 +340,19 @@ export function ProjectFormFields({
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="workspace-dirs-existing">
-                  Workspace Directories <span className="text-red-500">*</span>
-                </Label>
+                <Label htmlFor="workspace-dirs-existing">Workspace Directories</Label>
                 <Input
                   id="workspace-dirs-existing"
                   type="text"
                   value={workspaceDirs ?? ''}
                   onChange={(e) => setWorkspaceDirs?.(e.target.value)}
-                  placeholder="frontend,backend (comma-separated, relative to repo root)"
-                  required
+                  placeholder="frontend,backend (comma-separated) or leave empty for repo root"
                 />
                 <p className="text-xs text-muted-foreground">
-                  Comma-separated directories at the repo root (e.g.,
-                  <code className="mx-1">frontend,backend</code>). These will be used to
-                  copy <code className="mx-1">.env*</code> files and to run setup/cleanup/dev
-                  scripts per workspace.
+                  Optional. Leave empty to run scripts in the repository root. For monorepos,
+                  enter comma-separated directories relative to the repo root (e.g.,
+                  <code className="mx-1">frontend,backend</code>). You can also use
+                  <code className="mx-1">.</code> to explicitly target the root.
                 </p>
               </div>
             </div>
@@ -501,20 +498,19 @@ export function ProjectFormFields({
       {isEditing && (
         <div className="space-y-4 pt-4 border-t border-border">
           <div className="space-y-2">
-            <Label htmlFor="workspace-dirs-edit">
-              Workspace Directories <span className="text-red-500">*</span>
-            </Label>
+            <Label htmlFor="workspace-dirs-edit">Workspace Directories</Label>
             <Input
               id="workspace-dirs-edit"
               type="text"
               value={workspaceDirs ?? ''}
               onChange={(e) => setWorkspaceDirs?.(e.target.value)}
-              placeholder="frontend,backend (comma-separated, relative to repo root)"
-              required
+              placeholder="frontend,backend (comma-separated) or leave empty for repo root"
             />
             <p className="text-xs text-muted-foreground">
-              Used for .env copying and to run Setup/Cleanup/Dev scripts per workspace in the
-              worktree.
+              Optional. Used to copy <code className="mx-1">.env*</code> files and run
+              Setup/Cleanup/Dev scripts per workspace in the worktree. Leave empty to operate in
+              the repo root, or use <code className="mx-1">.</code> to explicitly target the
+              root.
             </p>
           </div>
           <div className="space-y-2">
