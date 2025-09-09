@@ -73,7 +73,7 @@ export const ProvidePatDialog = NiceModal.create<ProvidePatDialogProps>(
                 href="https://github.com/settings/tokens"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-blue-600 hover:underline"
+                className="text-[hsl(var(--info))] hover:underline"
               >
                 Create a token here
               </a>
