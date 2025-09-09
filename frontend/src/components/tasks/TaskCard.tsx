@@ -133,24 +133,26 @@ export function TaskCard({
         </DropdownMenu>
       </div>
 
+      {/* Status indicators positioned absolute near the menu */}
+      <div className="absolute top-[14px] right-8 flex items-center space-x-1">
+        {/* In Progress Spinner */}
+        {task.has_in_progress_attempt && (
+          <Loader2 className="h-3 w-3 animate-spin text-blue-500" />
+        )}
+        {/* Merged Indicator */}
+        {task.has_merged_attempt && (
+          <CheckCircle className="h-3 w-3 text-green-500" />
+        )}
+        {/* Failed Indicator */}
+        {task.last_attempt_failed && !task.has_merged_attempt && (
+          <XCircle className="h-3 w-3 text-destructive" />
+        )}
+      </div>
+
       <div className="flex flex-1 gap-2 items-center min-w-0 pr-8">
         <h4 className="flex-1 min-w-0 font-light text-sm">
           {task.title}
         </h4>
-        <div className="flex items-center space-x-1">
-          {/* In Progress Spinner */}
-          {task.has_in_progress_attempt && (
-            <Loader2 className="h-3 w-3 animate-spin text-blue-500" />
-          )}
-          {/* Merged Indicator */}
-          {task.has_merged_attempt && (
-            <CheckCircle className="h-3 w-3 text-green-500" />
-          )}
-          {/* Failed Indicator */}
-          {task.last_attempt_failed && !task.has_merged_attempt && (
-            <XCircle className="h-3 w-3 text-destructive" />
-          )}
-        </div>
       </div>
       {task.description && (
         <p className="flex-1 text-sm text-secondary-foreground break-words">
