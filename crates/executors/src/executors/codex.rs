@@ -69,11 +69,16 @@ impl SessionHandler {
 
     /// Extract session ID from codex stderr output
     pub fn extract_session_id_from_line(line: &str) -> Option<String> {
-        // Look for session_id in the log format:
-        // 2025-07-23T15:47:59.877058Z  INFO codex_exec: Codex initialized with event: Event { id: "0", msg: SessionConfigured(SessionConfiguredEvent { session_id: 3cdcc4df-c7c3-4cca-8902-48c3d4a0f96b, model: "codex-mini-latest", history_log_id: 9104228, history_entry_count: 1 }) }
+        // Accept both legacy and new formats:
+        // - legacy:  session_id: 3cdcc4df-c7c3-4cca-8902-48c3d4a0f96b
+        // - new:     session_id: ConversationId(3cdcc4df-c7c3-4cca-8902-48c3d4a0f96b)
         static SESSION_ID_REGEX: std::sync::OnceLock<Regex> = std::sync::OnceLock::new();
         let regex = SESSION_ID_REGEX.get_or_init(|| {
-            Regex::new(r"session_id:\s*([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})").unwrap()
+            // optional ConversationId(...) wrapper around UUID
+            Regex::new(
+                r"session_id:\s*(?:ConversationId\()?([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})\)?"
+            )
+            .unwrap()
         });
 
         regex
@@ -999,6 +1004,16 @@ mod tests {
         assert_eq!(
             session_id,
             Some("3cdcc4df-c7c3-4cca-8902-48c3d4a0f96b".to_string())
+        );
+    }
+
+    #[test]
+    fn test_extract_session_id_conversation_id_format() {
+        let line = "2025-09-09T01:34:25.508222Z  INFO codex_exec: Codex initialized with event: SessionConfiguredEvent { session_id: ConversationId(7a29295e-f9c1-4081-ad7e-fd0e3f501e7a), model: \"gpt-5\", history_log_id: 42349115, history_entry_count: 895, initial_messages: None }";
+        let session_id = SessionHandler::extract_session_id_from_line(line);
+        assert_eq!(
+            session_id,
+            Some("7a29295e-f9c1-4081-ad7e-fd0e3f501e7a".to_string())
         );
     }
 
