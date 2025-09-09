@@ -737,6 +737,19 @@ impl ContainerService for LocalContainerService {
             .await?
             .ok_or(sqlx::Error::RowNotFound)?;
 
+        // Refresh remotes so the base branch reference is up-to-date before creating the worktree.
+        // Use the Git CLI here to respect the user's SSH/auth configuration. Non-fatal on failure.
+        {
+            let git = services::services::git_cli::GitCli::new();
+            if let Err(e) = git.git(&project.git_repo_path, ["fetch", "--all", "--prune"]) {
+                tracing::debug!(
+                    "git fetch failed (non-fatal) for repo {}: {}",
+                    project.git_repo_path.display(),
+                    e
+                );
+            }
+        }
+
         WorktreeManager::create_worktree(
             &project.git_repo_path,
             &git_branch_name,
