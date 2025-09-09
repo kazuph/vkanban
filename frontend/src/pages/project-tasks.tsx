@@ -119,6 +119,11 @@ export function ProjectTasks() {
     }
   }, [projectId]);
 
+  // Define task creation handler (wraps openTaskForm)
+  const handleCreateNewTask = useCallback(() => {
+    handleCreateTask();
+  }, [handleCreateTask]);
+
   const handleClosePanel = useCallback(() => {
     // setIsPanelOpen(false);
     // setSelectedTask(null);
