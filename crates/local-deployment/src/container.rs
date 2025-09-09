@@ -737,11 +737,43 @@ impl ContainerService for LocalContainerService {
             .await?
             .ok_or(sqlx::Error::RowNotFound)?;
 
+        // Always try to refresh remotes before creating a worktree so the base is up to date.
+        // Use Git CLI here to respect user's auth/SSH config.
+        {
+            let git = services::services::git_cli::GitCli::new();
+            if let Err(e) = git.git(&project.git_repo_path, ["fetch", "--all", "--prune"]) {
+                tracing::debug!(
+                    "git fetch failed (non-fatal) for repo {}: {}",
+                    project.git_repo_path.display(),
+                    e
+                );
+            }
+        }
+
+        // If the configured base is a local branch with an upstream, prefer the remote tracking
+        // branch so the new attempt starts from the latest remote commit without mutating the
+        // user's local branch/working tree.
+        let mut effective_base_branch = task_attempt.base_branch.clone();
+        // Try to resolve a remote tracking branch for the configured base; if present, prefer it.
+        if let Ok(remote_name) = self
+            .git()
+            .get_remote_name_from_branch_name(&project.git_repo_path, &task_attempt.base_branch)
+        {
+            let candidate = format!("{}/{}", remote_name, task_attempt.base_branch);
+            if self
+                .git()
+                .find_branch_type(&project.git_repo_path, &candidate)
+                .is_ok()
+            {
+                effective_base_branch = candidate;
+            }
+        }
+
         WorktreeManager::create_worktree(
             &project.git_repo_path,
             &git_branch_name,
             &worktree_path,
-            &task_attempt.base_branch,
+            &effective_base_branch,
             true, // create new branch
         )
         .await?;
@@ -789,6 +821,25 @@ impl ContainerService for LocalContainerService {
         .await?;
 
         TaskAttempt::update_branch(&self.db.pool, task_attempt.id, &git_branch_name).await?;
+        // If we used a different base branch than originally recorded (e.g., switched to
+        // remote tracking ref like origin/main), persist it so downstream features (diff,
+        // rebase, status) compare against the same base we actually used.
+        if effective_base_branch != task_attempt.base_branch {
+            if let Err(e) = TaskAttempt::update_base_branch(
+                &self.db.pool,
+                task_attempt.id,
+                &effective_base_branch,
+            )
+            .await
+            {
+                tracing::warn!(
+                    "Failed to update base_branch to '{}' for attempt {}: {}",
+                    effective_base_branch,
+                    task_attempt.id,
+                    e
+                );
+            }
+        }
 
         Ok(worktree_path.to_string_lossy().to_string())
     }
