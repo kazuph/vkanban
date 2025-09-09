@@ -49,7 +49,8 @@ export function Navbar() {
 
   const handleCreateTask = () => {
     if (projectId) {
-      openTaskForm({ projectId });
+      // Default to simple creation from navbar
+      openTaskForm({ projectId, defaultAction: 'create' });
     }
   };
 
@@ -103,6 +104,16 @@ export function Navbar() {
           <div className="flex-1 flex justify-end">
             {projectId && (
               <>
+                {/* Move New Task to the leftmost within the right control group */}
+                <Button
+                  variant="outline"
+                  onClick={handleCreateTask}
+                  aria-label="Create new task"
+                  className="font-medium mr-1"
+                >
+                  <Plus className="h-4 w-4 mr-2" />
+                  New Task
+                </Button>
                 <Button
                   variant="ghost"
                   size="icon"
@@ -118,14 +129,6 @@ export function Navbar() {
                   aria-label="Project settings"
                 >
                   <Settings className="h-4 w-4" />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={handleCreateTask}
-                  aria-label="Create new task"
-                >
-                  <Plus className="h-4 w-4" />
                 </Button>
               </>
             )}
