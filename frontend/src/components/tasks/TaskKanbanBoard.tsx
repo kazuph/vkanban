@@ -14,6 +14,10 @@ import {
   useKanbanKeyboardNavigation,
 } from '@/lib/keyboard-shortcuts.ts';
 import { statusBoardColors, statusLabels } from '@/utils/status-labels';
+import { Button } from '@/components/ui/button';
+import { Plus } from 'lucide-react';
+import { Card } from '@/components/ui/card';
+import { openTaskForm } from '@/lib/openTaskForm';
 
 type Task = TaskWithAttemptStatus;
 
@@ -139,10 +143,61 @@ function TaskKanbanBoard({
     <KanbanProvider onDragEnd={onDragEnd}>
       {Object.entries(groupedTasks).map(([status, statusTasks]) => (
         <KanbanBoard key={status} id={status as TaskStatus}>
-          <KanbanHeader
-            name={statusLabels[status as TaskStatus]}
-            color={statusBoardColors[status as TaskStatus]}
-          />
+          {/* Custom header with optional create buttons for TODO/IN PROGRESS */}
+          <KanbanHeader>
+            <Card
+              className={
+                'sticky top-0 z-20 flex shrink-0 items-center gap-2 p-3 border-b border-dashed bg-background'
+              }
+              style={{
+                backgroundImage: `linear-gradient(hsl(var(${statusBoardColors[status as TaskStatus]}) / 0.03), hsl(var(${statusBoardColors[status as TaskStatus]}) / 0.03))`,
+              }}
+            >
+              <div className="flex w-full items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <div
+                    className="h-2 w-2 rounded-full"
+                    style={{
+                      backgroundColor: `hsl(var(${statusBoardColors[status as TaskStatus]}))`,
+                    }}
+                  />
+                  <p className="m-0 text-sm">{statusLabels[status as TaskStatus]}</p>
+                </div>
+                {(status === 'todo' || status === 'inprogress') && (
+                  <div className="flex items-center">
+                    {status === 'todo' ? (
+                      <Button
+                        variant="ghost"
+                        size="xs"
+                        onClick={() =>
+                          projectId &&
+                          openTaskForm({ projectId, defaultAction: 'create' })
+                        }
+                        className="font-medium h-auto py-0 px-2 leading-none"
+                        aria-label="Create new task in To Do"
+                      >
+                        <Plus className="h-4 w-4 mr-1" />
+                        New Task
+                      </Button>
+                    ) : (
+                      <Button
+                        variant="ghost"
+                        size="xs"
+                        onClick={() =>
+                          projectId && openTaskForm({ projectId, defaultAction: 'start' })
+                        }
+                        className="font-medium h-auto py-0 px-2 leading-none"
+                        aria-label="Create and start task in In Progress"
+                      >
+                        <Plus className="h-4 w-4 mr-1" />
+                        Start Task
+                      </Button>
+                    )}
+                  </div>
+                )}
+              </div>
+            </Card>
+          </KanbanHeader>
           <KanbanCards>
             {statusTasks.map((task, index) => (
               <TaskCard

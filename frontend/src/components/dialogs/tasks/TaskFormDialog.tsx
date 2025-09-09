@@ -38,10 +38,14 @@ export interface TaskFormDialogProps {
   projectId?: string; // For file search functionality
   initialTemplate?: TaskTemplate | null; // For pre-filling from template
   initialTask?: Task | null; // For duplicating an existing task
+  // Which action should be the primary when opening in create mode
+  // - 'create': highlight "Create Task" (for To Do)
+  // - 'start': highlight "Create & Start" (for In Progress)
+  defaultAction?: 'create' | 'start';
 }
 
 export const TaskFormDialog = NiceModal.create<TaskFormDialogProps>(
-  ({ task, projectId, initialTemplate, initialTask }) => {
+  ({ task, projectId, initialTemplate, initialTask, defaultAction = 'start' }) => {
     const modal = useModal();
     const { createTask, createAndStart, updateTask } =
       useTaskMutations(projectId);
@@ -520,7 +524,32 @@ export const TaskFormDialog = NiceModal.create<TaskFormDialogProps>(
                   >
                     {isSubmitting ? 'Updating...' : 'Update Task'}
                   </Button>
+                ) : defaultAction === 'create' ? (
+                  // Emphasize Create-only for To Do
+                  <>
+                    <Button
+                      onClick={handleSubmit}
+                      disabled={
+                        isSubmitting || isSubmittingAndStart || !title.trim()
+                      }
+                      className={'font-medium'}
+                    >
+                      {isSubmitting ? 'Creating...' : 'Create Task'}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={handleCreateAndStart}
+                      disabled={
+                        isSubmitting || isSubmittingAndStart || !title.trim()
+                      }
+                    >
+                      {isSubmittingAndStart
+                        ? 'Creating & Starting...'
+                        : 'Create & Start'}
+                    </Button>
+                  </>
                 ) : (
+                  // Emphasize Create & Start (default)
                   <>
                     <Button
                       variant="outline"
