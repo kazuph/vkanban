@@ -164,9 +164,9 @@ function CreateAttempt({
         </div>
         <div className="flex items-center">
           <label className="text-xs font-medium text-muted-foreground">
-            Each time you start an attempt, a new session is initiated with your
-            selected coding agent, and a git worktree and corresponding task
-            branch are created.
+            Starting a new attempt creates a fresh session with your selected
+            coding agent on the same base branch as the current attempt. A
+            dedicated git worktree and task branch are created automatically.
           </label>
         </div>
 
