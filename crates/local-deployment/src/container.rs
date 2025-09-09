@@ -819,6 +819,24 @@ impl ContainerService for LocalContainerService {
         .await?;
 
         TaskAttempt::update_branch(&self.db.pool, task_attempt.id, &git_branch_name).await?;
+        // If we switched to a remote tracking base (e.g., origin/main), persist it so later
+        // diff/rebase/status operations compare against the same base we actually used.
+        if effective_base_branch != task_attempt.base_branch {
+            if let Err(e) = TaskAttempt::update_base_branch(
+                &self.db.pool,
+                task_attempt.id,
+                &effective_base_branch,
+            )
+            .await
+            {
+                tracing::warn!(
+                    "Failed to update base_branch to '{}' for attempt {}: {}",
+                    effective_base_branch,
+                    task_attempt.id,
+                    e
+                );
+            }
+        }
 
         Ok(worktree_path.to_string_lossy().to_string())
     }
