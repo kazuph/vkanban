@@ -38,7 +38,7 @@ export function ProjectTasks() {
 
   // Projects State
   const [project, setProject] = useState<Project | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isProjectLoading, setIsProjectLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   // Helper functions to open task forms
@@ -96,36 +96,26 @@ export function ProjectTasks() {
     [navigate, projectId, selectedTask, isFullscreen]
   );
 
+  // Stream tasks for this project
   const {
-    data: tasks = [],
-    isLoading: tasksLoading,
-    isError: tasksError,
-    streamError,
+    tasks,
     tasksById,
-  } = useProjectTasks(projectId!);
-
-  // Keyboard shortcuts
-  useKeyboardShortcuts({
-    'Ctrl+N': () => handleCreateNewTask(),
-    'Cmd+N': () => handleCreateNewTask(),
-  });
-
-  const handleCreateNewTask = useCallback(() => {
-    handleCreateTask();
-  }, [handleCreateTask]);
+    isLoading,
+    error: streamError,
+  } = useProjectTasks(projectId);
 
   const fetchProject = useCallback(async () => {
     if (!projectId) return;
 
     try {
-      setIsLoading(true);
+      setIsProjectLoading(true);
       const projectData = await projectsApi.getById(projectId);
       setProject(projectData);
       setError(null);
     } catch (err) {
       setError('Failed to load project');
     } finally {
-      setIsLoading(false);
+      setIsProjectLoading(false);
     }
   }, [projectId]);
 
@@ -222,32 +212,23 @@ export function ProjectTasks() {
     }
   }, [fetchProject, projectId]);
 
-  // Handle direct navigation to task details
+  // Sync selected task to URL and live updates (upstream baseline)
   useEffect(() => {
-    if (taskId && tasks.length > 0) {
-      const task = tasks.find((t) => t.id === taskId);
-      if (task) {
-        setSelectedTask(task);
+    if (taskId) {
+      const t = taskId ? tasksById[taskId] : undefined;
+      if (t) {
+        setSelectedTask(t);
         setIsPanelOpen(true);
-      } else {
-        // Task not found, navigate back to project
-        navigate(`/projects/${projectId}`, { replace: true });
       }
-    } else if (!taskId && (selectedTask || isPanelOpen)) {
-      // No task in URL but panel is open, close it
+    } else {
       setSelectedTask(null);
       setIsPanelOpen(false);
     }
-  }, [taskId, tasks, projectId, navigate, selectedTask, isPanelOpen]);
+  }, [taskId, tasksById]);
 
-  // Auto-fetch project when tasks load if not already loaded
-  useEffect(() => {
-    if (!project && projectId && tasks.length > 0) {
-      fetchProject();
-    }
-  }, [project, projectId, tasks.length, fetchProject]);
+  // (Upstream baseline) Rely on initial project fetch; tasks stream updates live
 
-  if (isLoading) {
+  if (isLoading || isProjectLoading) {
     return <Loader message="Loading tasks..." size={32} className="py-8" />;
   }
 
