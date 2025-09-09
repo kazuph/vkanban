@@ -422,7 +422,7 @@ function CurrentAttempt({
           </div>
           <div className="flex items-center gap-1.5">
             <GitBranchIcon className="h-3 w-3 text-muted-foreground" />
-            <span className="text-sm font-medium truncate">
+            <span className="text-sm font-medium">
               {selectedAttempt.branch}
             </span>
           </div>
@@ -430,7 +430,7 @@ function CurrentAttempt({
 
         <div className="min-w-0">
           <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">
-            <span className="truncate">Base Branch</span>
+            <span>Base Branch</span>
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>
