@@ -168,10 +168,14 @@ export function ProjectTasks() {
 
   const handleViewTaskDetails = useCallback(
     (task: Task) => {
+      // Open immediately for responsiveness
       setSelectedTask(task);
       setIsPanelOpen(true);
+      // Also sync URL so close action (which navigates) works consistently
+      const baseUrl = `/projects/${projectId}/tasks/${task.id}`;
+      navigate(baseUrl, { replace: true });
     },
-    []
+    [navigate, projectId]
   );
 
   const handleDragEnd = useCallback(
