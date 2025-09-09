@@ -2,6 +2,14 @@ import { memo, useMemo } from 'react';
 import { hasAnsi, FancyAnsi } from 'fancy-ansi';
 import { clsx } from 'clsx';
 
+// Allow overriding default repo in build-time env (Vite)
+// Fallback to this repository if not set.
+const DEFAULT_REPO_BASE =
+  (typeof import.meta !== 'undefined' &&
+    (import.meta as any).env &&
+    (import.meta as any).env.VITE_REPO_BASE) ||
+  'https://github.com/kazuph/vkanban';
+
 interface RawLogTextProps {
   content: string;
   channel?: 'stdout' | 'stderr';
@@ -48,9 +56,16 @@ function linkifyHtml(html: string, repoUrlBase?: string): string {
         // If repoUrlBase not provided, try to infer from text (first GitHub URL)
         let effectiveRepoBase = repoUrlBase;
         if (!effectiveRepoBase) {
-          const m = /https?:\/\/github\.com\/([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+)/.exec(text);
+          // 1) Try to infer from any GitHub URL present in this text node
+          const m = /https?:\/\/github\.com\/([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+)/.exec(
+            text
+          );
           if (m) {
             effectiveRepoBase = `https://github.com/${m[1]}/${m[2]}`;
+          }
+          // 2) Fallback to build-time default repo base (fork uses kazuph/vkanban)
+          if (!effectiveRepoBase) {
+            effectiveRepoBase = DEFAULT_REPO_BASE;
           }
         }
         let match: RegExpExecArray | null;
