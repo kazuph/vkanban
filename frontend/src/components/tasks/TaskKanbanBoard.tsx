@@ -168,29 +168,27 @@ function TaskKanbanBoard({
                     {status === 'todo' ? (
                       <Button
                         variant="ghost"
-                        size="xs"
+                        size="icon"
                         onClick={() =>
                           projectId &&
                           openTaskForm({ projectId, defaultAction: 'create' })
                         }
-                        className="font-medium h-auto py-0 px-2 leading-none"
+                        className="h-7 w-7 p-0"
                         aria-label="Create new task in To Do"
                       >
-                        <Plus className="h-4 w-4 mr-1" />
-                        New Task
+                        <Plus className="h-4 w-4" />
                       </Button>
                     ) : (
                       <Button
                         variant="ghost"
-                        size="xs"
+                        size="icon"
                         onClick={() =>
                           projectId && openTaskForm({ projectId, defaultAction: 'start' })
                         }
-                        className="font-medium h-auto py-0 px-2 leading-none"
+                        className="h-7 w-7 p-0"
                         aria-label="Create and start task in In Progress"
                       >
-                        <Plus className="h-4 w-4 mr-1" />
-                        Start Task
+                        <Plus className="h-4 w-4" />
                       </Button>
                     )}
                   </div>

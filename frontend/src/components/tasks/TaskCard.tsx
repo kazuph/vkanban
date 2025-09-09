@@ -16,7 +16,9 @@ import {
   Trash2,
   XCircle,
 } from 'lucide-react';
+import { FolderOpen } from 'lucide-react';
 import type { TaskWithAttemptStatus } from 'shared/types';
+import { projectsApi } from '@/lib/api';
 
 type Task = TaskWithAttemptStatus;
 
@@ -113,6 +115,18 @@ export function TaskCard({
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
+                <DropdownMenuItem
+                  onClick={async () => {
+                    try {
+                      await projectsApi.openEditor(task.project_id);
+                    } catch (err) {
+                      console.error('Failed to open project folder in IDE:', err);
+                    }
+                  }}
+                >
+                  <FolderOpen className="h-4 w-4 mr-2" />
+                  Open Folder
+                </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => onEdit(task)}>
                   <Edit className="h-4 w-4 mr-2" />
                   Edit
