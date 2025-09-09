@@ -80,7 +80,60 @@ export function TaskCard({
       forwardedRef={localRef}
       onKeyDown={handleKeyDown}
     >
-      <div className="flex flex-1 gap-2 items-center min-w-0">
+      {/* Absolute action menu (…): fixed at top-right regardless of height */}
+      <div
+        className="absolute top-2 right-2"
+        onPointerDown={(e) => e.stopPropagation()}
+        onMouseDown={(e) => e.stopPropagation()}
+        onClick={(e) => e.stopPropagation()}
+        onKeyDown={(e) => e.stopPropagation()}
+      >
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-6 w-6 p-0 hover:bg-muted rounded-full"
+              aria-label="Open task actions menu"
+            >
+              <MoreHorizontal className="h-3 w-3" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem
+              onClick={async () => {
+                try {
+                  await projectsApi.openEditor(task.project_id);
+                } catch (err) {
+                  console.error('Failed to open project folder in IDE:', err);
+                }
+              }}
+            >
+              <FolderOpen className="h-4 w-4 mr-2" />
+              Open Folder
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => onEdit(task)}>
+              <Edit className="h-4 w-4 mr-2" />
+              Edit
+            </DropdownMenuItem>
+            {onDuplicate && (
+              <DropdownMenuItem onClick={() => onDuplicate(task)}>
+                <Copy className="h-4 w-4 mr-2" />
+                Duplicate
+              </DropdownMenuItem>
+            )}
+            <DropdownMenuItem
+              onClick={() => onDelete(task.id)}
+              className="text-destructive"
+            >
+              <Trash2 className="h-4 w-4 mr-2" />
+              Delete
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+
+      <div className="flex flex-1 gap-2 items-center min-w-0 pr-8">
         <h4 className="flex-1 min-w-0 font-light text-sm">
           {task.title}
         </h4>
@@ -97,56 +150,6 @@ export function TaskCard({
           {task.last_attempt_failed && !task.has_merged_attempt && (
             <XCircle className="h-3 w-3 text-destructive" />
           )}
-          {/* Actions Menu */}
-          <div
-            onPointerDown={(e) => e.stopPropagation()}
-            onMouseDown={(e) => e.stopPropagation()}
-            onClick={(e) => e.stopPropagation()}
-            onKeyDown={(e) => e.stopPropagation()}
-          >
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-6 w-6 p-0 hover:bg-muted"
-                >
-                  <MoreHorizontal className="h-3 w-3" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem
-                  onClick={async () => {
-                    try {
-                      await projectsApi.openEditor(task.project_id);
-                    } catch (err) {
-                      console.error('Failed to open project folder in IDE:', err);
-                    }
-                  }}
-                >
-                  <FolderOpen className="h-4 w-4 mr-2" />
-                  Open Folder
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => onEdit(task)}>
-                  <Edit className="h-4 w-4 mr-2" />
-                  Edit
-                </DropdownMenuItem>
-                {onDuplicate && (
-                  <DropdownMenuItem onClick={() => onDuplicate(task)}>
-                    <Copy className="h-4 w-4 mr-2" />
-                    Duplicate
-                  </DropdownMenuItem>
-                )}
-                <DropdownMenuItem
-                  onClick={() => onDelete(task.id)}
-                  className="text-destructive"
-                >
-                  <Trash2 className="h-4 w-4 mr-2" />
-                  Delete
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
         </div>
       </div>
       {task.description && (

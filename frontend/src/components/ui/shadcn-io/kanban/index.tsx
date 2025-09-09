@@ -42,8 +42,12 @@ export const KanbanBoard = ({ id, children, className }: KanbanBoardProps) => {
   return (
     <div
       className={cn(
-        'flex h-full min-h-40 flex-col',
-        isOver ? 'outline-primary' : 'outline-black',
+        // Column container: light background like Trello/GitHub Projects
+        'flex h-full min-h-40 flex-col bg-muted/30 p-2',
+        // Highlight drop target subtly
+        isOver
+          ? 'outline-primary outline-2 outline-offset-[-2px] rounded-md'
+          : 'outline-transparent',
         className
       )}
       ref={setNodeRef}
@@ -96,7 +100,10 @@ export const KanbanCard = ({
   return (
     <Card
       className={cn(
-        'p-3 focus:ring-2 ring-secondary-foreground outline-none border-b flex-col space-y-2',
+        // Card appearance: clear boundary, rounded, light elevation
+        'relative p-3 flex-col gap-2 bg-card border rounded-md shadow-sm transition-shadow cursor-grab',
+        'focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background outline-none',
+        'hover:shadow-md',
         isDragging && 'cursor-grabbing',
         className
       )}
@@ -124,7 +131,8 @@ export type KanbanCardsProps = {
 };
 
 export const KanbanCards = ({ children, className }: KanbanCardsProps) => (
-  <div className={cn('flex flex-1 flex-col', className)}>{children}</div>
+  // Stack cards with gaps inside each column; leave space under header
+  <div className={cn('flex flex-1 flex-col gap-2 mt-2', className)}>{children}</div>
 );
 
 export type KanbanHeaderProps =
@@ -143,8 +151,8 @@ export const KanbanHeader = (props: KanbanHeaderProps) =>
   ) : (
     <Card
       className={cn(
-        'sticky top-0 z-20 flex shrink-0 items-center gap-2 p-3 min-h-12 border-b border-dashed',
-        'bg-background',
+        // Column header: card-like container to match cards
+        'sticky top-0 z-20 flex shrink-0 items-center gap-2 p-3 min-h-12 bg-background border rounded-md',
         props.className
       )}
       style={{
