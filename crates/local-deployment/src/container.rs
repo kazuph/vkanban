@@ -750,11 +750,28 @@ impl ContainerService for LocalContainerService {
             }
         }
 
+        // Prefer a remote tracking ref (e.g., origin/main) as the effective base when available,
+        // so attempts start from the freshest state without mutating the user's local branch.
+        let mut effective_base_branch = task_attempt.base_branch.clone();
+        if let Ok(remote_name) = self
+            .git()
+            .get_remote_name_from_branch_name(&project.git_repo_path, &task_attempt.base_branch)
+        {
+            let candidate = format!("{}/{}", remote_name, task_attempt.base_branch);
+            if self
+                .git()
+                .find_branch_type(&project.git_repo_path, &candidate)
+                .is_ok()
+            {
+                effective_base_branch = candidate;
+            }
+        }
+
         WorktreeManager::create_worktree(
             &project.git_repo_path,
             &git_branch_name,
             &worktree_path,
-            &task_attempt.base_branch,
+            &effective_base_branch,
             true, // create new branch
         )
         .await?;
