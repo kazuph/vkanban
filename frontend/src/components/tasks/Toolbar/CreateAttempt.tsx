@@ -1,4 +1,4 @@
-import { Dispatch, SetStateAction, useCallback } from 'react';
+import { Dispatch, SetStateAction, useCallback, useState } from 'react';
 import { Button } from '@/components/ui/button.tsx';
 import { ArrowDown, Settings2, X } from 'lucide-react';
 import {
@@ -17,6 +17,8 @@ import BranchSelector from '@/components/tasks/BranchSelector.tsx';
 import { useKeyboardShortcuts } from '@/lib/keyboard-shortcuts.ts';
 import { showModal } from '@/lib/modals';
 import { Card } from '@/components/ui/card';
+import { Textarea } from '@/components/ui/textarea';
+import { attemptsApi } from '@/lib/api';
 
 type Props = {
   task: Task;
@@ -47,6 +49,7 @@ function CreateAttempt({
 }: Props) {
   const { isAttemptRunning } = useAttemptExecution(selectedAttempt?.id);
   const { createAttempt, isCreating } = useAttemptCreation(task.id);
+  const [initialPrompt, setInitialPrompt] = useState('');
 
   // Create attempt logic
   const actuallyCreateAttempt = useCallback(
@@ -57,12 +60,27 @@ function CreateAttempt({
         throw new Error('Base branch is required to create an attempt');
       }
 
-      await createAttempt({
+      const newAttempt = await createAttempt({
         profile,
         baseBranch: effectiveBaseBranch,
       });
+
+      // Send the initial prompt immediately as the first follow-up
+      const prompt = initialPrompt.trim();
+      if (prompt) {
+        try {
+          await attemptsApi.followUp(newAttempt.id, {
+            prompt,
+            variant: (profile as any).variant ?? null,
+            image_ids: null,
+          });
+        } catch (e) {
+          // Non-fatal: attempt is created; surface error via console
+          console.error('Failed to send initial prompt follow-up:', e);
+        }
+      }
     },
-    [createAttempt, selectedBranch]
+    [createAttempt, selectedBranch, initialPrompt]
   );
 
   // Handler for Enter key or Start button
@@ -72,6 +90,10 @@ function CreateAttempt({
       baseBranch?: string,
       isKeyTriggered?: boolean
     ) => {
+      if (!initialPrompt.trim()) {
+        // Require initial prompt before starting
+        return;
+      }
       if (task.status === 'todo' && isKeyTriggered) {
         try {
           const result = await showModal<'confirmed' | 'canceled'>(
@@ -95,7 +117,7 @@ function CreateAttempt({
         setIsInCreateAttemptMode(false);
       }
     },
-    [task.status, actuallyCreateAttempt, setIsInCreateAttemptMode]
+    [task.status, actuallyCreateAttempt, setIsInCreateAttemptMode, initialPrompt]
   );
 
   // Keyboard shortcuts
@@ -295,7 +317,24 @@ function CreateAttempt({
             })()}
           </div>
 
-          {/* Step 4: Start Attempt */}
+          {/* Step 4: Initial Instructions (required) */}
+          <div className="space-y-1">
+            <div className="flex items-center gap-1.5">
+              <label className="text-xs font-medium text-muted-foreground">
+                Initial Instructions
+              </label>
+              <span className="text-[10px] text-destructive">(required)</span>
+            </div>
+            <Textarea
+              value={initialPrompt}
+              onChange={(e) => setInitialPrompt(e.target.value)}
+              placeholder="Describe what the agent should do first..."
+              className="w-full text-xs px-2 py-2 border-input"
+              rows={4}
+            />
+          </div>
+
+          {/* Step 5: Start Attempt */}
           <div className="space-y-1">
             <Button
               onClick={handleCreateAttempt}
@@ -303,7 +342,8 @@ function CreateAttempt({
                 !selectedProfile ||
                 !createAttemptBranch ||
                 isAttemptRunning ||
-                isCreating
+                isCreating ||
+                !initialPrompt.trim()
               }
               size="sm"
               className={
@@ -314,6 +354,8 @@ function CreateAttempt({
                   ? 'Base branch is required'
                   : !selectedProfile
                     ? 'Coding agent is required'
+                    : !initialPrompt.trim()
+                      ? 'Initial instructions are required'
                     : undefined
               }
             >
