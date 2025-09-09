@@ -30,6 +30,7 @@ type Props = {
   entry: NormalizedEntry | ProcessStartPayload;
   expansionKey: string;
   diffDeletable?: boolean;
+  repoUrlBase?: string;
 };
 
 type FileEditAction = Extract<ActionType, { action: 'file_edit' }>;
@@ -184,12 +185,22 @@ const MessageCard: React.FC<{
   const errorTheme =
     'border-red-400/40 bg-red-50 dark:bg-[hsl(var(--card))] text-[hsl(var(--foreground))]';
 
+  const handleClick: React.MouseEventHandler<HTMLDivElement> = (e) => {
+    // Do not toggle when clicking links inside the card
+    const target = e.target as HTMLElement | null;
+    if (target && target.closest('a')) {
+      e.stopPropagation();
+      return;
+    }
+    onToggle?.();
+  };
+
   return (
     <div
       className={`${frameBase} ${
         variant === 'system' ? systemTheme : errorTheme
       }`}
-      onClick={onToggle}
+      onClick={onToggle ? handleClick : undefined}
     >
       <div className="flex items-center gap-1.5">
         <div className="min-w-0 flex-1">{children}</div>
@@ -237,7 +248,8 @@ const CollapsibleEntry: React.FC<{
   expansionKey: string;
   variant: CollapsibleVariant;
   contentClassName: string;
-}> = ({ content, markdown, expansionKey, variant, contentClassName }) => {
+  repoUrlBase?: string;
+}> = ({ content, markdown, expansionKey, variant, contentClassName, repoUrlBase }) => {
   const multiline = content.includes('\n');
   const [expanded, toggle] = useExpandable(`entry:${expansionKey}`, false);
 
@@ -249,7 +261,8 @@ const CollapsibleEntry: React.FC<{
           className="whitespace-pre-wrap break-words"
         />
       ) : (
-        content
+        // Linkify plain text content (URLs, #123) in non-markdown entries
+        <RawLogText content={content} as="div" repoUrlBase={repoUrlBase} />
       )}
     </div>
   );
@@ -263,7 +276,8 @@ const CollapsibleEntry: React.FC<{
           className="whitespace-pre-wrap break-words"
         />
       ) : (
-        firstLine
+        // Linkify URLs/#123 in single-line preview as well
+        <RawLogText content={firstLine} as="div" repoUrlBase={repoUrlBase} />
       )}
     </div>
   );
@@ -286,6 +300,7 @@ const CollapsibleEntry: React.FC<{
 const PlanPresentationCard: React.FC<{
   plan: string;
   expansionKey: string;
+  repoUrlBase?: string;
 }> = ({ plan, expansionKey }) => {
   const [expanded, toggle] = useExpandable(`plan-entry:${expansionKey}`, true);
 
@@ -333,7 +348,8 @@ const ToolCallCard: React.FC<{
   expansionKey: string;
   content?: string;
   entryContent?: string;
-}> = ({ entryType, action, expansionKey, content, entryContent }) => {
+  repoUrlBase?: string;
+}> = ({ entryType, action, expansionKey, content, entryContent, repoUrlBase }) => {
   const at: any = entryType?.action_type || action;
   const [expanded, toggle] = useExpandable(`tool-entry:${expansionKey}`, false);
 
@@ -422,7 +438,7 @@ const ToolCallCard: React.FC<{
                     Output
                   </div>
                   <div className="px-2 py-1">
-                    <RawLogText content={output} />
+                    <RawLogText content={output} repoUrlBase={repoUrlBase} />
                   </div>
                 </>
               )}
@@ -464,7 +480,7 @@ const ToolCallCard: React.FC<{
  * Main component  *
  *******************/
 
-function DisplayConversationEntry({ entry, expansionKey }: Props) {
+function DisplayConversationEntry({ entry, expansionKey, repoUrlBase }: Props) {
   const isNormalizedEntry = (
     entry: NormalizedEntry | ProcessStartPayload
   ): entry is NormalizedEntry => 'entry_type' in entry;
@@ -480,6 +496,7 @@ function DisplayConversationEntry({ entry, expansionKey }: Props) {
         action={toolAction}
         expansionKey={expansionKey}
         content={toolAction?.message ?? toolAction?.summary ?? undefined}
+        repoUrlBase={repoUrlBase}
       />
     );
   }
@@ -500,6 +517,7 @@ function DisplayConversationEntry({ entry, expansionKey }: Props) {
           expansionKey={expansionKey}
           variant={isSystem ? 'system' : 'error'}
           contentClassName={getContentClassName(entryType)}
+          repoUrlBase={repoUrlBase}
         />
       ) : isToolUse && isFileEdit(entryType.action_type) ? (
         // Only FileChangeRenderer for file_edit
@@ -518,12 +536,14 @@ function DisplayConversationEntry({ entry, expansionKey }: Props) {
         <PlanPresentationCard
           plan={entryType.action_type.plan}
           expansionKey={expansionKey}
+          repoUrlBase={repoUrlBase}
         />
       ) : isToolUse ? (
         <ToolCallCard
           entryType={entryType}
           expansionKey={expansionKey}
           entryContent={isNormalizedEntry(entry) ? entry.content : ''}
+          repoUrlBase={repoUrlBase}
         />
       ) : (
         <div className={getContentClassName(entryType)}>
@@ -533,7 +553,13 @@ function DisplayConversationEntry({ entry, expansionKey }: Props) {
               className="whitespace-pre-wrap break-words flex flex-col gap-1 font-light"
             />
           ) : isNormalizedEntry(entry) ? (
-            entry.content
+            // Linkify URLs in non-markdown conversation entries
+            <RawLogText
+              content={isNormalizedEntry(entry) ? entry.content : ''}
+              as="div"
+              className="font-light"
+              repoUrlBase={repoUrlBase}
+            />
           ) : (
             ''
           )}
