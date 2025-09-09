@@ -102,10 +102,7 @@ export const ProjectFormDialog = NiceModal.create<ProjectFormDialogProps>(
         const finalName =
           name.trim() || generateProjectNameFromPath(finalGitRepoPath);
 
-        if (!workspaceDirs.trim()) {
-          setError('Workspace directories are required (comma-separated).');
-          return;
-        }
+        // Workspace directories are optional. Empty means repo root.
 
         if (isEditing) {
           const updateData: UpdateProject = {
@@ -223,9 +220,7 @@ export const ProjectFormDialog = NiceModal.create<ProjectFormDialogProps>(
                   <DialogFooter>
                     <Button
                       type="submit"
-                      disabled={
-                        loading || !gitRepoPath.trim() || !workspaceDirs.trim()
-                      }
+                      disabled={loading || !gitRepoPath.trim()}
                     >
                       {loading ? 'Saving...' : 'Save Changes'}
                     </Button>
@@ -270,11 +265,7 @@ export const ProjectFormDialog = NiceModal.create<ProjectFormDialogProps>(
                 <Button
                   type="submit"
                   disabled={
-                    loading ||
-                    (repoMode === 'new'
-                      ? !folderName.trim()
-                      : !gitRepoPath.trim()) ||
-                    !workspaceDirs.trim()
+                    loading || (repoMode === 'new' ? !folderName.trim() : !gitRepoPath.trim())
                   }
                 >
                   {loading
