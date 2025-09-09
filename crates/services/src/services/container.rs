@@ -520,7 +520,14 @@ pub trait ContainerService {
                 .as_ref()
                 .ok_or_else(|| ContainerError::Other(anyhow!("Container ref not found")))?,
         );
-        let prompt = ImageService::canonicalise_image_paths(&task.to_prompt(), &worktree_path);
+        // Build base prompt from task + optional project-level append_prompt, then canonicalize image paths
+        let base_prompt = task.to_prompt();
+        let combined_prompt = if let Some(ref ap) = project.append_prompt {
+            format!("{base_prompt}{ap}")
+        } else {
+            base_prompt
+        };
+        let prompt = ImageService::canonicalise_image_paths(&combined_prompt, &worktree_path);
 
         // Helper: if workspace_dirs configured, run the script in each dir sequentially
         let make_workspace_script = |base_script: &str, ws: Option<&String>| -> String {

@@ -58,6 +58,7 @@ pub async fn create_project(
         copy_files,
         use_existing_repo,
         workspace_dirs,
+        append_prompt,
     } = payload;
     tracing::debug!("Creating project '{}'", name);
 
@@ -153,6 +154,7 @@ pub async fn create_project(
             cleanup_script,
             copy_files,
             workspace_dirs,
+            append_prompt,
         },
         id,
     )
@@ -194,6 +196,7 @@ pub async fn update_project(
         cleanup_script,
         copy_files,
         workspace_dirs,
+        append_prompt,
     } = payload;
     // If git_repo_path is being changed, check if the new path is already used by another project
     let git_repo_path = if let Some(new_git_repo_path) = git_repo_path.map(|s| expand_tilde(&s))
@@ -241,6 +244,7 @@ pub async fn update_project(
         cleanup_script,
         copy_files,
         workspace_dirs,
+        append_prompt,
     )
     .await
     {

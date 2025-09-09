@@ -245,6 +245,11 @@ pub async fn follow_up(
         }
     }
 
+    // Append project-level default instructions if configured
+    if let Some(ref ap) = project.append_prompt {
+        prompt = format!("{prompt}{ap}");
+    }
+
     let cleanup_action = project.cleanup_script.map(|script| {
         Box::new(ExecutorAction::new(
             ExecutorActionType::ScriptRequest(ScriptRequest {
