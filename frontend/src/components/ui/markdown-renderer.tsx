@@ -1,14 +1,42 @@
 import ReactMarkdown, { Components } from 'react-markdown';
 import { memo, useMemo } from 'react';
+import remarkGfm from 'remark-gfm';
+
+// Allow overriding default repo via Vite env
+const DEFAULT_REPO_BASE =
+  (typeof import.meta !== 'undefined' &&
+    (import.meta as any).env &&
+    (import.meta as any).env.VITE_REPO_BASE) ||
+  'https://github.com/kazuph/vkanban';
 
 interface MarkdownRendererProps {
   content: string;
   className?: string;
+  repoUrlBase?: string;
 }
 
-function MarkdownRenderer({ content, className = '' }: MarkdownRendererProps) {
+function MarkdownRenderer({ content, className = '', repoUrlBase }: MarkdownRendererProps) {
+  // Greedy but practical: linkify "#123" to PR URL when we know (or assume) a repo base
+  const base = repoUrlBase || DEFAULT_REPO_BASE;
+  const contentWithLinks = useMemo(() => {
+    if (!base) return content;
+    // Replace occurrences of #123 that are not part of a word
+    // Note: this is a simple text replacement and may affect code blocks; acceptable for now
+    return content.replace(/(^|[^\w])#(\d+)\b/g, (_m, p1, p2) => `${p1}[#${p2}](${base}/pull/${p2})`);
+  }, [content, base]);
   const components: Components = useMemo(
     () => ({
+      a: ({ href, children, ...props }) => (
+        <a
+          {...props}
+          href={href}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="underline text-[hsl(var(--info))] hover:opacity-90 break-words"
+        >
+          {children}
+        </a>
+      ),
       code: ({ children, ...props }) => (
         <code
           {...props}
@@ -73,7 +101,9 @@ function MarkdownRenderer({ content, className = '' }: MarkdownRendererProps) {
   );
   return (
     <div className={className}>
-      <ReactMarkdown components={components}>{content}</ReactMarkdown>
+      <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
+        {contentWithLinks}
+      </ReactMarkdown>
     </div>
   );
 }

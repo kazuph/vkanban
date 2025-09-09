@@ -14,14 +14,15 @@ interface LogEntryRowProps {
   restoreProcessId?: string;
   restoreDisabled?: boolean;
   restoreDisabledReason?: string;
+  repoUrlBase?: string;
 }
 
-function LogEntryRow({ entry, index }: LogEntryRowProps) {
+function LogEntryRow({ entry, index, repoUrlBase }: LogEntryRowProps) {
   switch (entry.channel) {
     case 'stdout':
-      return <StdoutEntry content={entry.payload as string} />;
+      return <StdoutEntry content={entry.payload as string} repoUrlBase={repoUrlBase} />;
     case 'stderr':
-      return <StderrEntry content={entry.payload as string} />;
+      return <StderrEntry content={entry.payload as string} repoUrlBase={repoUrlBase} />;
     case 'normalized':
       return (
         <div className="my-4">
@@ -29,6 +30,7 @@ function LogEntryRow({ entry, index }: LogEntryRowProps) {
             entry={entry.payload as NormalizedEntry}
             expansionKey={`${entry.processId}:${index}`}
             diffDeletable={false}
+            repoUrlBase={repoUrlBase}
           />
         </div>
       );

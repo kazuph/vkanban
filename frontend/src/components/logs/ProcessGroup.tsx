@@ -13,6 +13,7 @@ type Props = {
     restoreDisabled?: boolean;
     restoreDisabledReason?: string;
   };
+  repoUrlBase?: string;
 };
 
 export default function ProcessGroup({
@@ -21,6 +22,7 @@ export default function ProcessGroup({
   isCollapsed,
   onToggle,
   restore,
+  repoUrlBase,
 }: Props) {
   return (
     <div className="px-4 mt-4">
@@ -37,7 +39,7 @@ export default function ProcessGroup({
         {!isCollapsed &&
           entries.length > 0 &&
           entries.map((entry, i) => (
-            <LogEntryRow key={entry.id} entry={entry} index={i} />
+            <LogEntryRow key={entry.id} entry={entry} index={i} repoUrlBase={repoUrlBase} />
           ))}
       </div>
     </div>

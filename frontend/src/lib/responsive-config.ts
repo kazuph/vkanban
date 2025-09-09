@@ -35,7 +35,9 @@ export const getTaskPanelClasses = (forceFullScreen: boolean) => {
     : [
         `${PANEL_SIDE_BY_SIDE_BREAKPOINT}:relative`,
         `${PANEL_SIDE_BY_SIDE_BREAKPOINT}:inset-auto`,
-        `${PANEL_SIDE_BY_SIDE_BREAKPOINT}:z-auto`,
+        // Keep a higher z-index in side-by-side so header actions remain clickable
+        // over the kanban column headers (z-20) and any sticky alerts (z-30).
+        `${PANEL_SIDE_BY_SIDE_BREAKPOINT}:z-40`,
         `${PANEL_SIDE_BY_SIDE_BREAKPOINT}:h-full`,
         `${PANEL_SIDE_BY_SIDE_BREAKPOINT}:w-[800px]`,
       ].join(' ');

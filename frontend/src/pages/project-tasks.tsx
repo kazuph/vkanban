@@ -19,6 +19,7 @@ import TaskKanbanBoard from '@/components/tasks/TaskKanbanBoard';
 import { TaskDetailsPanel } from '@/components/tasks/TaskDetailsPanel';
 import type { TaskWithAttemptStatus, Project, TaskAttempt } from 'shared/types';
 import type { DragEndEvent } from '@/components/ui/shadcn-io/kanban';
+// (header removed) Breadcrumb / Link imports not needed
 import { useProjectTasks } from '@/hooks/useProjectTasks';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import NiceModal from '@ebay/nice-modal-react';
@@ -34,8 +35,11 @@ export function ProjectTasks() {
   const navigate = useNavigate();
   const location = useLocation();
 
+  // Projects State
   const [project, setProject] = useState<Project | null>(null);
+  const [isProjectLoading, setIsProjectLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
   // Helper functions to open task forms
   const handleCreateTask = () => {
     if (project?.id) {
@@ -66,7 +70,7 @@ export function ProjectTasks() {
   // Attempts fetching (only when task is selected)
   const { data: attempts = [] } = useQuery({
     queryKey: ['taskAttempts', selectedTask?.id],
-    queryFn: () => attemptsApi.getAll(selectedTask!.id),
+    queryFn: ({ signal }) => attemptsApi.getAll(selectedTask!.id, signal),
     enabled: !!selectedTask?.id,
     refetchInterval: 5000,
   });
@@ -78,19 +82,14 @@ export function ProjectTasks() {
       const found = attempts.find((a) => a.id === attemptId);
       if (found) return found;
     }
-    return attempts[0] || null; // Most recent fallback
+    return attempts[0] || null;
   }, [attempts, attemptId]);
 
-  // Navigation callback for attempt selection
   const setSelectedAttempt = useCallback(
     (attempt: TaskAttempt | null) => {
-      if (!selectedTask) return;
-
-      const baseUrl = `/projects/${projectId}/tasks/${selectedTask.id}`;
-      const attemptUrl = attempt ? `/attempts/${attempt.id}` : '';
-      const fullSuffix = isFullscreen ? '/full' : '';
-      const fullUrl = `${baseUrl}${attemptUrl}${fullSuffix}`;
-
+      if (!attempt || !selectedTask) return;
+      const baseUrl = `/projects/${projectId}/tasks/${selectedTask.id}/attempts/${attempt.id}`;
+      const fullUrl = isFullscreen ? `${baseUrl}/full` : baseUrl;
       navigate(fullUrl, { replace: true });
     },
     [navigate, projectId, selectedTask, isFullscreen]
@@ -104,35 +103,25 @@ export function ProjectTasks() {
     error: streamError,
   } = useProjectTasks(projectId);
 
-  // Sync selectedTask with URL params and live task updates
-  useEffect(() => {
-    if (taskId) {
-      const t = taskId ? tasksById[taskId] : undefined;
-      if (t) {
-        setSelectedTask(t);
-        setIsPanelOpen(true);
-      }
-    } else {
-      setSelectedTask(null);
-      setIsPanelOpen(false);
-    }
-  }, [taskId, tasksById]);
+  const fetchProject = useCallback(async () => {
+    if (!projectId) return;
 
-  // Define task creation handler
+    try {
+      setIsProjectLoading(true);
+      const projectData = await projectsApi.getById(projectId);
+      setProject(projectData);
+      setError(null);
+    } catch (err) {
+      setError('Failed to load project');
+    } finally {
+      setIsProjectLoading(false);
+    }
+  }, [projectId]);
+
+  // Define task creation handler (wraps openTaskForm)
   const handleCreateNewTask = useCallback(() => {
     handleCreateTask();
   }, [handleCreateTask]);
-
-  // Full screen
-
-  const fetchProject = useCallback(async () => {
-    try {
-      const result = await projectsApi.getById(projectId!);
-      setProject(result);
-    } catch (err) {
-      setError('Failed to load project');
-    }
-  }, [projectId]);
 
   const handleClosePanel = useCallback(() => {
     // setIsPanelOpen(false);
@@ -178,16 +167,15 @@ export function ProjectTasks() {
   );
 
   const handleViewTaskDetails = useCallback(
-    (task: Task, attemptIdToShow?: string) => {
-      // setSelectedTask(task);
-      // setIsPanelOpen(true);
-      // Update URL to include task ID and optionally attempt ID
-      const targetUrl = attemptIdToShow
-        ? `/projects/${projectId}/tasks/${task.id}/attempts/${attemptIdToShow}`
-        : `/projects/${projectId}/tasks/${task.id}`;
-      navigate(targetUrl, { replace: true });
+    (task: Task) => {
+      // Open immediately for responsiveness
+      setSelectedTask(task);
+      setIsPanelOpen(true);
+      // Also sync URL so close action (which navigates) works consistently
+      const baseUrl = `/projects/${projectId}/tasks/${task.id}`;
+      navigate(baseUrl, { replace: true });
     },
-    [projectId, navigate]
+    [navigate, projectId]
   );
 
   const handleDragEnd = useCallback(
@@ -230,11 +218,25 @@ export function ProjectTasks() {
     if (projectId) {
       fetchProject();
     }
-  }, [projectId, fetchProject]);
+  }, [fetchProject, projectId]);
 
-  // Remove legacy direct-navigation handler; live sync above covers this
+  // Sync selected task to URL and live updates (upstream baseline)
+  useEffect(() => {
+    if (taskId) {
+      const t = taskId ? tasksById[taskId] : undefined;
+      if (t) {
+        setSelectedTask(t);
+        setIsPanelOpen(true);
+      }
+    } else {
+      setSelectedTask(null);
+      setIsPanelOpen(false);
+    }
+  }, [taskId, tasksById]);
 
-  if (isLoading) {
+  // (Upstream baseline) Rely on initial project fetch; tasks stream updates live
+
+  if (isLoading || isProjectLoading) {
     return <Loader message="Loading tasks..." size={32} className="py-8" />;
   }
 
@@ -256,6 +258,8 @@ export function ProjectTasks() {
     <div
       className={`min-h-full ${getMainContainerClasses(isPanelOpen, isFullscreen)}`}
     >
+      {/* Header with breadcrumb and duplicated buttons removed per request */}
+      
       {streamError && (
         <Alert className="w-full z-30 xl:sticky xl:top-0">
           <AlertTitle className="flex items-center gap-2">

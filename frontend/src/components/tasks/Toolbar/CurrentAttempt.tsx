@@ -327,15 +327,27 @@ function CurrentAttempt({
   }, [selectedAttempt.container_ref]);
 
   // Get status information for display
-  const getStatusInfo = useCallback(() => {
+  type StatusInfo = {
+    dotColor: string;
+    textColor: string;
+    text: string;
+    isClickable: boolean;
+    onClick?: () => void;
+    prUrl?: string;
+    prNumber?: number | bigint;
+  };
+
+  const getStatusInfo = useCallback((): StatusInfo => {
     if (mergeInfo.hasMergedPR && mergeInfo.mergedPR?.type === 'pr') {
       const prMerge = mergeInfo.mergedPR;
       return {
         dotColor: 'bg-green-500',
         textColor: 'text-green-700',
         text: `PR #${prMerge.pr_info.number} merged`,
-        isClickable: true,
-        onClick: () => window.open(prMerge.pr_info.url, '_blank'),
+        // Only the #123 part should be a link
+        isClickable: false,
+        prUrl: prMerge.pr_info.url,
+        prNumber: prMerge.pr_info.number,
       };
     }
     if (
@@ -357,8 +369,10 @@ function CurrentAttempt({
         dotColor: 'bg-blue-500',
         textColor: 'text-blue-700',
         text: `PR #${prMerge.pr_info.number}`,
-        isClickable: true,
-        onClick: () => window.open(prMerge.pr_info.url, '_blank'),
+        // Only the #123 part should be a link
+        isClickable: false,
+        prUrl: prMerge.pr_info.url,
+        prNumber: prMerge.pr_info.number,
       };
     }
 
@@ -408,7 +422,7 @@ function CurrentAttempt({
           </div>
           <div className="flex items-center gap-1.5">
             <GitBranchIcon className="h-3 w-3 text-muted-foreground" />
-            <span className="text-sm font-medium truncate">
+            <span className="text-sm font-medium">
               {selectedAttempt.branch}
             </span>
           </div>
@@ -416,7 +430,7 @@ function CurrentAttempt({
 
         <div className="min-w-0">
           <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">
-            <span className="truncate">Base Branch</span>
+            <span>Base Branch</span>
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -451,11 +465,41 @@ function CurrentAttempt({
           <div className="flex items-center gap-1.5">
             {(() => {
               const statusInfo = getStatusInfo();
+              // If we have PR info, render only the #123 as a link
+              if (statusInfo.prUrl && statusInfo.prNumber) {
+                const text = statusInfo.text;
+                // Split around the first occurrence of #<number>
+                const match = text.match(/^(.*?)(#\d+)(.*)$/);
+                const prefix = match ? match[1] : '';
+                const hashPart = match ? match[2] : `#${statusInfo.prNumber}`;
+                const suffix = match ? match[3] : text.replace(`PR #${statusInfo.prNumber}`, '');
+                return (
+                  <>
+                    <div className={`h-2 w-2 ${statusInfo.dotColor} rounded-full`} />
+                    <span className={`text-sm font-medium ${statusInfo.textColor}`}>
+                      {prefix}
+                      <a
+                        href={statusInfo.prUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="underline text-[hsl(var(--info))] hover:opacity-90"
+                        onClick={(e) => {
+                          // Prevent parent click handlers from triggering
+                          e.stopPropagation();
+                        }}
+                      >
+                        {hashPart}
+                      </a>
+                      {suffix}
+                    </span>
+                  </>
+                );
+              }
+
+              // Fallback: previous behavior
               return (
                 <>
-                  <div
-                    className={`h-2 w-2 ${statusInfo.dotColor} rounded-full`}
-                  />
+                  <div className={`h-2 w-2 ${statusInfo.dotColor} rounded-full`} />
                   {statusInfo.isClickable ? (
                     <button
                       onClick={statusInfo.onClick}
@@ -464,9 +508,7 @@ function CurrentAttempt({
                       {statusInfo.text}
                     </button>
                   ) : (
-                    <span
-                      className={`text-sm font-medium ${statusInfo.textColor} truncate`}
-                    >
+                    <span className={`text-sm font-medium ${statusInfo.textColor} truncate`}>
                       {statusInfo.text}
                     </span>
                   )}

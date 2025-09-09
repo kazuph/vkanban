@@ -1,26 +1,61 @@
-# General
-.git
-.gitignore
-.DS_Store
-*.log
-node_modules
+# Node modules
 **/node_modules
-target
-**/target
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
 
-# Local caches and artifacts
-.playwright-browsers
-.pnpm-store
-test-results
-project.worktree
-var_tmp_vkanban
-data
+# Build artifacts
+target/
+dist/
+build/
+*.tgz
+*.tar.gz
 
-# Frontend build output (we build inside the image)
-frontend/dist
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
 
-# VCS / IDE
-.idea
-.vscode
-.history
-.swp
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Git
+.git/
+.gitignore
+
+# Docker
+Dockerfile*
+.dockerignore
+
+# Environment files
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Logs
+logs/
+*.log
+
+# Runtime data
+pids/
+*.pid
+*.seed
+*.pid.lock
+
+# Coverage directory used by tools like istanbul
+coverage/
+
+# Temporary folders
+tmp/
+temp/
