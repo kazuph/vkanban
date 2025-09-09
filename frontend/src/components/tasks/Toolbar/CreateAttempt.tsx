@@ -13,7 +13,6 @@ import type { ExecutorProfileId } from 'shared/types';
 import type { TaskAttempt } from 'shared/types';
 import { useAttemptCreation } from '@/hooks/useAttemptCreation';
 import { useAttemptExecution } from '@/hooks/useAttemptExecution';
-import BranchSelector from '@/components/tasks/BranchSelector.tsx';
 import { useKeyboardShortcuts } from '@/lib/keyboard-shortcuts.ts';
 import { showModal } from '@/lib/modals';
 import { Card } from '@/components/ui/card';
@@ -24,11 +23,9 @@ type Props = {
   task: Task;
   branches: GitBranch[];
   taskAttempts: TaskAttempt[];
-  createAttemptBranch: string | null;
   selectedProfile: ExecutorProfileId | null;
   selectedBranch: string | null;
   setIsInCreateAttemptMode: Dispatch<SetStateAction<boolean>>;
-  setCreateAttemptBranch: Dispatch<SetStateAction<string | null>>;
   setSelectedProfile: Dispatch<SetStateAction<ExecutorProfileId | null>>;
   availableProfiles: Record<string, ExecutorConfig> | null;
   selectedAttempt: TaskAttempt | null;
@@ -38,11 +35,9 @@ function CreateAttempt({
   task,
   branches,
   taskAttempts,
-  createAttemptBranch,
   selectedProfile,
   selectedBranch,
   setIsInCreateAttemptMode,
-  setCreateAttemptBranch,
   setSelectedProfile,
   availableProfiles,
   selectedAttempt,
@@ -53,12 +48,20 @@ function CreateAttempt({
 
   // Create attempt logic
   const actuallyCreateAttempt = useCallback(
-    async (profile: ExecutorProfileId, baseBranch?: string) => {
-      const effectiveBaseBranch = baseBranch || selectedBranch;
-
-      if (!effectiveBaseBranch) {
-        throw new Error('Base branch is required to create an attempt');
-      }
+    async (profile: ExecutorProfileId) => {
+      // Always use the same base branch as the current (or latest) attempt.
+      const latestAttempt = selectedAttempt
+        ? selectedAttempt
+        : taskAttempts.length > 0
+          ? taskAttempts.reduce((latest, current) =>
+              new Date(current.created_at) > new Date(latest.created_at)
+                ? current
+                : latest
+            )
+          : null;
+      const effectiveBaseBranch = latestAttempt?.base_branch || selectedBranch ||
+        // fallback to current git branch if available
+        (branches.find((b) => b.is_current)?.name || branches[0]?.name || 'main');
 
       const newAttempt = await createAttempt({
         profile,
@@ -87,7 +90,6 @@ function CreateAttempt({
   const onCreateNewAttempt = useCallback(
     async (
       profile: ExecutorProfileId,
-      baseBranch?: string,
       isKeyTriggered?: boolean
     ) => {
       if (!initialPrompt.trim()) {
@@ -106,14 +108,14 @@ function CreateAttempt({
           );
 
           if (result === 'confirmed') {
-            await actuallyCreateAttempt(profile, baseBranch);
+            await actuallyCreateAttempt(profile);
             setIsInCreateAttemptMode(false);
           }
         } catch (error) {
           // User cancelled - do nothing
         }
       } else {
-        await actuallyCreateAttempt(profile, baseBranch);
+        await actuallyCreateAttempt(profile);
         setIsInCreateAttemptMode(false);
       }
     },
@@ -126,11 +128,7 @@ function CreateAttempt({
       if (!selectedProfile) {
         return;
       }
-      onCreateNewAttempt(
-        selectedProfile,
-        createAttemptBranch || undefined,
-        true
-      );
+      onCreateNewAttempt(selectedProfile, true);
     },
     hasOpenDialog: false,
     closeDialog: () => {},
@@ -144,7 +142,7 @@ function CreateAttempt({
     if (!selectedProfile) {
       return;
     }
-    onCreateNewAttempt(selectedProfile, createAttemptBranch || undefined);
+    onCreateNewAttempt(selectedProfile);
   };
 
   return (
@@ -173,21 +171,6 @@ function CreateAttempt({
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-end">
-          {/* Step 1: Choose Base Branch */}
-          <div className="space-y-1">
-            <div className="flex items-center gap-1.5">
-              <label className="text-xs font-medium text-muted-foreground">
-                Base branch <span className="text-destructive">*</span>
-              </label>
-            </div>
-            <BranchSelector
-              branches={branches}
-              selectedBranch={createAttemptBranch}
-              onBranchSelect={setCreateAttemptBranch}
-              placeholder="Select branch"
-            />
-          </div>
-
           {/* Step 2: Choose Profile */}
           <div className="space-y-1">
             <div className="flex items-center gap-1.5">
@@ -340,7 +323,6 @@ function CreateAttempt({
               onClick={handleCreateAttempt}
               disabled={
                 !selectedProfile ||
-                !createAttemptBranch ||
                 isAttemptRunning ||
                 isCreating ||
                 !initialPrompt.trim()
@@ -350,9 +332,7 @@ function CreateAttempt({
                 'w-full text-xs gap-2 justify-center bg-black text-white hover:bg-black/90'
               }
               title={
-                !createAttemptBranch
-                  ? 'Base branch is required'
-                  : !selectedProfile
+                !selectedProfile
                     ? 'Coding agent is required'
                     : !initialPrompt.trim()
                       ? 'Initial instructions are required'

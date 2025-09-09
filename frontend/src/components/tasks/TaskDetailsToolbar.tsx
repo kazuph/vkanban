@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useReducer, useState } from 'react';
+import { useCallback, useEffect, useReducer, useState } from 'react';
 import { Play } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useProjectBranches } from '@/hooks/useProjectBranches';
@@ -98,33 +98,13 @@ function TaskDetailsToolbar({
   // const { attemptId: urlAttemptId } = useParams<{ attemptId?: string }>();
   const { system, profiles } = useUserSystem();
 
-  // Memoize latest attempt calculation
-  const latestAttempt = useMemo(() => {
-    if (taskAttempts.length === 0) return null;
-    return taskAttempts.reduce((latest, current) =>
-      new Date(current.created_at) > new Date(latest.created_at)
-        ? current
-        : latest
-    );
-  }, [taskAttempts]);
+  // Memoize latest attempt calculation (no longer needed for base branch selection)
 
   // Derived state
   const isInCreateAttemptMode =
     forceCreateAttempt ??
     (ui.userForcedCreateMode || taskAttempts.length === 0);
 
-  // Derive createAttemptBranch for backward compatibility
-  const createAttemptBranch = useMemo(() => {
-    if (selectedBranch) {
-      return selectedBranch;
-    } else if (
-      latestAttempt?.base_branch &&
-      branches.some((b: GitBranch) => b.name === latestAttempt.base_branch)
-    ) {
-      return latestAttempt.base_branch;
-    }
-    return selectedBranch;
-  }, [latestAttempt, branches, selectedBranch]);
 
   // Fetch branches via React Query hook
   const branchesQuery = useProjectBranches(projectId);
@@ -157,18 +137,6 @@ function TaskDetailsToolbar({
     dispatch({ type: 'ENTER_CREATE_MODE' });
   }, []);
 
-  // Stub handlers for backward compatibility with CreateAttempt
-  const setCreateAttemptBranch = useCallback(
-    (branch: string | null | ((prev: string | null) => string | null)) => {
-      if (typeof branch === 'function') {
-        setSelectedBranch((prev) => branch(prev));
-      } else {
-        setSelectedBranch(branch);
-      }
-      // This is now derived state, so no-op
-    },
-    []
-  );
 
   const setIsInCreateAttemptMode = useCallback(
     (value: boolean | ((prev: boolean) => boolean)) => {
@@ -206,12 +174,10 @@ function TaskDetailsToolbar({
         {isInCreateAttemptMode ? (
           <CreateAttempt
             task={task}
-            createAttemptBranch={createAttemptBranch}
             selectedBranch={selectedBranch}
             selectedProfile={selectedProfile}
             taskAttempts={taskAttempts}
             branches={branches}
-            setCreateAttemptBranch={setCreateAttemptBranch}
             setIsInCreateAttemptMode={setIsInCreateAttemptMode}
             setSelectedProfile={setSelectedProfile}
             availableProfiles={profiles}
