@@ -36,7 +36,7 @@ export function AttemptHeaderCard({
           {selectedAttempt?.executor}
         </p>
         {selectedAttempt?.branch && (
-          <p className="max-w-30 truncate">
+          <p className="max-w-30">
             <span className="text-secondary-foreground">Branch &middot; </span>
             {selectedAttempt.branch}
           </p>
