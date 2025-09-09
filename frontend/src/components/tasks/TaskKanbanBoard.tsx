@@ -147,7 +147,7 @@ function TaskKanbanBoard({
           <KanbanHeader>
             <Card
               className={
-                'sticky top-0 z-20 flex shrink-0 items-center gap-2 p-3 border-b border-dashed bg-background'
+                'sticky top-0 z-20 flex shrink-0 items-center gap-2 p-3 min-h-12 border-b border-dashed bg-background'
               }
               style={{
                 backgroundImage: `linear-gradient(hsl(var(${statusBoardColors[status as TaskStatus]}) / 0.03), hsl(var(${statusBoardColors[status as TaskStatus]}) / 0.03))`,
@@ -173,10 +173,10 @@ function TaskKanbanBoard({
                           projectId &&
                           openTaskForm({ projectId, defaultAction: 'create' })
                         }
-                        className="h-7 w-7 p-0"
+                        className="h-6 w-6 p-0"
                         aria-label="Create new task in To Do"
                       >
-                        <Plus className="h-4 w-4" />
+                        <Plus className="h-3 w-3" />
                       </Button>
                     ) : (
                       <Button
@@ -185,10 +185,10 @@ function TaskKanbanBoard({
                         onClick={() =>
                           projectId && openTaskForm({ projectId, defaultAction: 'start' })
                         }
-                        className="h-7 w-7 p-0"
+                        className="h-6 w-6 p-0"
                         aria-label="Create and start task in In Progress"
                       >
-                        <Plus className="h-4 w-4" />
+                        <Plus className="h-3 w-3" />
                       </Button>
                     )}
                   </div>
