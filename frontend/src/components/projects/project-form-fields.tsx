@@ -48,6 +48,8 @@ interface ProjectFormFieldsProps {
   onCreateProject?: (path: string, name: string) => void;
   workspaceDirs: string;
   setWorkspaceDirs: (dirs: string) => void;
+  appendPrompt: string;
+  setAppendPrompt: (value: string) => void;
 }
 
 export function ProjectFormFields({
@@ -75,6 +77,8 @@ export function ProjectFormFields({
   onCreateProject,
   workspaceDirs,
   setWorkspaceDirs,
+  appendPrompt,
+  setAppendPrompt,
 }: ProjectFormFieldsProps) {
   const { system } = useUserSystem();
 
@@ -355,6 +359,24 @@ export function ProjectFormFields({
                   <code className="mx-1">.</code> to explicitly target the root.
                 </p>
               </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="append-prompt-existing">Default Task Instructions</Label>
+                <textarea
+                  id="append-prompt-existing"
+                  value={appendPrompt}
+                  onChange={(e) => setAppendPrompt(e.target.value)}
+                  placeholder={
+                    'Optional. Appended to every prompt for this project.\n\nExample: Always make small, atomic commits with clear messages. After completing a task, open a PR with a structured title and checklist.'
+                  }
+                  rows={4}
+                  className="w-full px-3 py-2 text-sm border border-input bg-background text-foreground rounded-md resize-vertical focus:outline-none focus:ring-2 focus:ring-ring"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Appended to every task/follow-up prompt for this project. Useful for commit/PR
+                  policies, code style, or review rules.
+                </p>
+              </div>
             </div>
           </>
         </div>
@@ -562,6 +584,24 @@ export function ProjectFormFields({
               <strong>only if changes were made</strong>. Use it for quality
               assurance tasks like running linters, formatters, tests, or other
               validation steps. If no changes are made, this script is skipped.
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="append-prompt-edit">Default Task Instructions</Label>
+            <textarea
+              id="append-prompt-edit"
+              value={appendPrompt}
+              onChange={(e) => setAppendPrompt(e.target.value)}
+              placeholder={
+                'Optional. Appended to every prompt for this project.\n\nExample: Always make small, atomic commits with clear messages. After completing a task, open a PR with a structured title and checklist.'
+              }
+              rows={4}
+              className="w-full px-3 py-2 text-sm border border-input bg-background text-foreground rounded-md resize-vertical focus:outline-none focus:ring-2 focus:ring-ring"
+            />
+            <p className="text-sm text-muted-foreground">
+              Appended to every task/follow-up prompt for this project. Useful for commit/PR
+              policies, code style, or review rules.
             </p>
           </div>
 
