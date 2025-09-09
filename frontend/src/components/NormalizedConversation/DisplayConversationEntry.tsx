@@ -259,6 +259,7 @@ const CollapsibleEntry: React.FC<{
         <MarkdownRenderer
           content={content}
           className="whitespace-pre-wrap break-words"
+          repoUrlBase={repoUrlBase}
         />
       ) : (
         // Linkify plain text content (URLs, #123) in non-markdown entries
@@ -274,6 +275,7 @@ const CollapsibleEntry: React.FC<{
         <MarkdownRenderer
           content={firstLine}
           className="whitespace-pre-wrap break-words"
+          repoUrlBase={repoUrlBase}
         />
       ) : (
         // Linkify URLs/#123 in single-line preview as well
