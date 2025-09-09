@@ -220,7 +220,7 @@ function ProcessesTab({ attemptId }: ProcessesTabProps) {
           </div>
           <div className="flex-1">
             {selectedProcess ? (
-              <ProcessLogsViewer processId={selectedProcess.id} />
+              <ProcessLogsViewer processId={selectedProcess.id} attemptId={attemptId} />
             ) : loadingProcessId === selectedProcessId ? (
               <div className="text-center text-muted-foreground">
                 <p>Loading process details...</p>

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Virtuoso, VirtuosoHandle } from 'react-virtuoso';
 import { AlertCircle } from 'lucide-react';
 import { useLogStream } from '@/hooks/useLogStream';
@@ -9,17 +9,30 @@ type LogEntry = Extract<PatchType, { type: 'STDOUT' } | { type: 'STDERR' }>;
 
 interface ProcessLogsViewerProps {
   processId: string;
+  attemptId?: string;
 }
 
-export default function ProcessLogsViewer({
-  processId,
-}: ProcessLogsViewerProps) {
+import { useBranchStatus } from '@/hooks/useBranchStatus';
+
+export default function ProcessLogsViewer({ processId, attemptId }: ProcessLogsViewerProps) {
   const virtuosoRef = useRef<VirtuosoHandle>(null);
   const didInitScroll = useRef(false);
   const prevLenRef = useRef(0);
   const [atBottom, setAtBottom] = useState(true);
 
   const { logs, error } = useLogStream(processId);
+  const { data: branchStatus } = useBranchStatus(attemptId);
+  const repoUrlBase = useMemo(() => {
+    const pr = branchStatus?.merges?.find((m) => m.type === 'pr');
+    const url = pr?.pr_info?.url || null;
+    if (!url) return undefined;
+    try {
+      const u = new URL(url);
+      const parts = u.pathname.split('/').filter(Boolean);
+      if (parts.length >= 2) return `${u.origin}/${parts[0]}/${parts[1]}`;
+    } catch {}
+    return undefined;
+  }, [branchStatus?.merges]);
 
   // 1) Initial jump to bottom once data appears.
   useEffect(() => {
@@ -60,6 +73,7 @@ export default function ProcessLogsViewer({
         content={entry.content}
         channel={entry.type === 'STDERR' ? 'stderr' : 'stdout'}
         className="text-sm px-4 py-1"
+        repoUrlBase={repoUrlBase}
       />
     );
   };
