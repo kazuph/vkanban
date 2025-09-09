@@ -1,5 +1,6 @@
 import ReactMarkdown, { Components } from 'react-markdown';
 import { memo, useMemo } from 'react';
+import remarkGfm from 'remark-gfm';
 
 interface MarkdownRendererProps {
   content: string;
@@ -9,6 +10,17 @@ interface MarkdownRendererProps {
 function MarkdownRenderer({ content, className = '' }: MarkdownRendererProps) {
   const components: Components = useMemo(
     () => ({
+      a: ({ href, children, ...props }) => (
+        <a
+          {...props}
+          href={href}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="underline text-[hsl(var(--info))] hover:opacity-90 break-words"
+        >
+          {children}
+        </a>
+      ),
       code: ({ children, ...props }) => (
         <code
           {...props}
@@ -73,7 +85,9 @@ function MarkdownRenderer({ content, className = '' }: MarkdownRendererProps) {
   );
   return (
     <div className={className}>
-      <ReactMarkdown components={components}>{content}</ReactMarkdown>
+      <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
+        {content}
+      </ReactMarkdown>
     </div>
   );
 }

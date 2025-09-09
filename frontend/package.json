@@ -54,6 +54,7 @@
     "react-use-measure": "^2.1.7",
     "react-virtuoso": "^4.13.0",
     "react-window": "^1.8.11",
+    "remark-gfm": "^4.0.1",
     "rfc6902": "^5.1.2",
     "tailwind-merge": "^2.2.0",
     "tailwindcss-animate": "^1.0.7",
