@@ -129,6 +129,8 @@ export function TaskDetailsPanel({
                     hideCloseButton={hideBackdrop}
                     isFullScreen={isFullScreen}
                     setFullScreen={setFullScreen}
+                    selectedAttempt={selectedAttempt}
+                    projectId={projectId}
                   />
                 )}
 
