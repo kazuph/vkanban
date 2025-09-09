@@ -19,8 +19,7 @@ import TaskKanbanBoard from '@/components/tasks/TaskKanbanBoard';
 import { TaskDetailsPanel } from '@/components/tasks/TaskDetailsPanel';
 import type { TaskWithAttemptStatus, Project, TaskAttempt } from 'shared/types';
 import type { DragEndEvent } from '@/components/ui/shadcn-io/kanban';
-import { Breadcrumb } from '@/components/ui/breadcrumb';
-import { Link } from 'react-router-dom';
+// (header removed) Breadcrumb / Link imports not needed
 import { useProjectTasks } from '@/hooks/useProjectTasks';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import NiceModal from '@ebay/nice-modal-react';
@@ -255,33 +254,7 @@ export function ProjectTasks() {
     <div
       className={`min-h-full ${getMainContainerClasses(isPanelOpen, isFullscreen)}`}
     >
-      {!isFullscreen && (
-        <div className="w-full border-b bg-background/60 backdrop-blur supports-[backdrop-filter]:bg-background/40">
-          <div className="w-full px-3 sm:px-4 py-2">
-            <div className="flex items-center justify-between gap-3 flex-wrap">
-              <Breadcrumb
-                className="flex-1 min-w-0"
-                items={[
-                  { label: 'Projects', to: '/projects' },
-                  project
-                    ? { label: project.name, to: `/projects/${projectId}` }
-                    : { label: '...' },
-                  { label: 'Tasks' },
-                  selectedTask ? { label: selectedTask.title } : undefined,
-                ].filter(Boolean) as any}
-              />
-              <div className="flex items-center gap-2">
-                <Button size="sm" variant="secondary" asChild>
-                  <Link to={`/projects/${projectId}`}>Project Settings</Link>
-                </Button>
-                <Button size="sm" onClick={handleCreateNewTask}>
-                  <Plus className="h-4 w-4 mr-2" /> New Task
-                </Button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Header with breadcrumb and duplicated buttons removed per request */}
       
       {streamError && (
         <Alert className="w-full z-30 xl:sticky xl:top-0">
