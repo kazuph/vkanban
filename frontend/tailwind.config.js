@@ -6,6 +6,7 @@ module.exports = {
     './components/**/*.{ts,tsx}',
     './app/**/*.{ts,tsx}',
     './src/**/*.{ts,tsx}',
+    "node_modules/@rjsf/shadcn/src/**/*.{js,ts,jsx,tsx,mdx}"
   ],
   safelist: [
     'xl:hidden',
@@ -122,7 +123,7 @@ module.exports = {
         sm: "calc(var(--radius) - 4px)",
       },
       fontFamily: {
-        'chivo-mono': ['Chivo Mono', 'monospace'],
+        'chivo-mono': ['Chivo Mono', 'Noto Emoji', 'monospace'],
       },
       keyframes: {
         "accordion-down": {

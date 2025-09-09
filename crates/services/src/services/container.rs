@@ -1,6 +1,6 @@
 use std::{
     collections::HashMap,
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::{
         Arc,
         atomic::{AtomicUsize, Ordering},
@@ -29,9 +29,9 @@ use executors::{
         coding_agent_initial::CodingAgentInitialRequest,
         script::{ScriptContext, ScriptRequest, ScriptRequestLanguage},
     },
-    executors::{CodingAgent, ExecutorError, StandardCodingAgentExecutor},
-    logs::{NormalizedEntry, NormalizedEntryType, utils::patch::ConversationPatch},
-    profile::ProfileVariantLabel,
+    executors::{ExecutorError, StandardCodingAgentExecutor},
+    logs::utils::patch::ConversationPatch,
+    profile::{ExecutorConfigs, ExecutorProfileId},
 };
 use futures::{StreamExt, TryStreamExt, future};
 use sqlx::Error as SqlxError;
@@ -43,9 +43,43 @@ use uuid::Uuid;
 use crate::services::{
     git::{GitService, GitServiceError},
     image::ImageService,
-    worktree_manager::WorktreeError,
+    worktree_manager::{WorktreeError, WorktreeManager},
 };
 pub type ContainerRef = String;
+
+/// Data needed for background worktree cleanup (doesn't require DB access)
+#[derive(Debug, Clone)]
+pub struct WorktreeCleanupData {
+    pub attempt_id: Uuid,
+    pub worktree_path: PathBuf,
+    pub git_repo_path: Option<PathBuf>,
+}
+
+/// Cleanup worktrees without requiring database access
+pub async fn cleanup_worktrees_direct(data: &[WorktreeCleanupData]) -> Result<(), ContainerError> {
+    for cleanup_data in data {
+        tracing::debug!(
+            "Cleaning up worktree for attempt {}: {:?}",
+            cleanup_data.attempt_id,
+            cleanup_data.worktree_path
+        );
+
+        if let Err(e) = WorktreeManager::cleanup_worktree(
+            &cleanup_data.worktree_path,
+            cleanup_data.git_repo_path.as_deref(),
+        )
+        .await
+        {
+            tracing::error!(
+                "Failed to cleanup worktree for task attempt {}: {}",
+                cleanup_data.attempt_id,
+                e
+            );
+            // Continue with other cleanups even if one fails
+        }
+    }
+    Ok(())
+}
 
 #[derive(Debug, Error)]
 pub enum ContainerError {
@@ -82,6 +116,36 @@ pub trait ContainerService {
     async fn delete(&self, task_attempt: &TaskAttempt) -> Result<(), ContainerError> {
         self.try_stop(task_attempt).await;
         self.delete_inner(task_attempt).await
+    }
+
+    /// Check if a task has any running execution processes
+    async fn has_running_processes(&self, task_id: Uuid) -> Result<bool, ContainerError> {
+        let attempts = TaskAttempt::fetch_all(&self.db().pool, Some(task_id)).await?;
+
+        for attempt in attempts {
+            if let Ok(processes) =
+                ExecutionProcess::find_by_task_attempt_id(&self.db().pool, attempt.id).await
+            {
+                for process in processes {
+                    if process.status == ExecutionProcessStatus::Running {
+                        return Ok(true);
+                    }
+                }
+            }
+        }
+
+        Ok(false)
+    }
+
+    /// Stop execution processes for task attempts without cleanup
+    async fn stop_task_processes(
+        &self,
+        task_attempts: &[TaskAttempt],
+    ) -> Result<(), ContainerError> {
+        for attempt in task_attempts {
+            self.try_stop(attempt).await;
+        }
+        Ok(())
     }
 
     async fn try_stop(&self, task_attempt: &TaskAttempt) {
@@ -128,8 +192,8 @@ pub trait ContainerService {
 
     async fn copy_project_files(
         &self,
-        source_dir: &PathBuf,
-        target_dir: &PathBuf,
+        source_dir: &Path,
+        target_dir: &Path,
         copy_files: &str,
     ) -> Result<(), ContainerError>;
 
@@ -320,38 +384,14 @@ pub trait ContainerService {
             // Spawn normalizer on populated store
             match executor_action.typ() {
                 ExecutorActionType::CodingAgentInitialRequest(request) => {
-                    if let Ok(executor) =
-                        CodingAgent::from_profile_variant_label(&request.profile_variant_label)
-                    {
-                        // Inject the initial user prompt before normalization (DB fallback path)
-                        let user_entry = create_user_message(request.prompt.clone());
-                        temp_store
-                            .push_patch(ConversationPatch::add_normalized_entry(0, user_entry));
-
-                        executor.normalize_logs(temp_store.clone(), &current_dir);
-                    } else {
-                        tracing::error!(
-                            "Failed to resolve profile '{:?}' for normalization",
-                            request.profile_variant_label
-                        );
-                    }
+                    let executor = ExecutorConfigs::get_cached()
+                        .get_coding_agent_or_default(&request.executor_profile_id);
+                    executor.normalize_logs(temp_store.clone(), &current_dir);
                 }
                 ExecutorActionType::CodingAgentFollowUpRequest(request) => {
-                    if let Ok(executor) =
-                        CodingAgent::from_profile_variant_label(&request.profile_variant_label)
-                    {
-                        // Inject the follow-up user prompt before normalization (DB fallback path)
-                        let user_entry = create_user_message(request.prompt.clone());
-                        temp_store
-                            .push_patch(ConversationPatch::add_normalized_entry(0, user_entry));
-
-                        executor.normalize_logs(temp_store.clone(), &current_dir);
-                    } else {
-                        tracing::error!(
-                            "Failed to resolve profile '{:?}' for normalization",
-                            request.profile_variant_label
-                        );
-                    }
+                    let executor = ExecutorConfigs::get_cached()
+                        .get_coding_agent_or_default(&request.executor_profile_id);
+                    executor.normalize_logs(temp_store.clone(), &current_dir);
                 }
                 _ => {
                     tracing::debug!(
@@ -451,7 +491,7 @@ pub trait ContainerService {
     async fn start_attempt(
         &self,
         task_attempt: &TaskAttempt,
-        profile_variant_label: ProfileVariantLabel,
+        executor_profile_id: ExecutorProfileId,
     ) -> Result<ExecutionProcess, ContainerError> {
         // Create container
         self.create(task_attempt).await?;
@@ -482,7 +522,29 @@ pub trait ContainerService {
         );
         let prompt = ImageService::canonicalise_image_paths(&task.to_prompt(), &worktree_path);
 
+        // Helper: if workspace_dirs configured, run the script in each dir sequentially
+        let make_workspace_script = |base_script: &str, ws: Option<&String>| -> String {
+            if let Some(ws_csv) = ws {
+                let dirs: Vec<&str> = ws_csv
+                    .split(',')
+                    .map(|s| s.trim())
+                    .filter(|s| !s.is_empty())
+                    .collect();
+                if !dirs.is_empty() {
+                    // Compose one shell script that runs the user's script in each dir
+                    // using subshells to isolate cd's; stop on first failure.
+                    let mut parts: Vec<String> = Vec::new();
+                    for d in dirs {
+                        parts.push(format!("(cd \"{}\" && {{ {} ; }})", d, base_script));
+                    }
+                    return format!("set -e\n{}", parts.join(" && \n"));
+                }
+            }
+            base_script.to_string()
+        };
+
         let cleanup_action = project.cleanup_script.map(|script| {
+            let script = make_workspace_script(&script, project.workspace_dirs.as_ref());
             Box::new(ExecutorAction::new(
                 ExecutorActionType::ScriptRequest(ScriptRequest {
                     script,
@@ -495,6 +557,7 @@ pub trait ContainerService {
 
         // Choose whether to execute the setup_script or coding agent first
         let execution_process = if let Some(setup_script) = project.setup_script {
+            let setup_script = make_workspace_script(&setup_script, project.workspace_dirs.as_ref());
             let executor_action = ExecutorAction::new(
                 ExecutorActionType::ScriptRequest(ScriptRequest {
                     script: setup_script,
@@ -505,7 +568,7 @@ pub trait ContainerService {
                 Some(Box::new(ExecutorAction::new(
                     ExecutorActionType::CodingAgentInitialRequest(CodingAgentInitialRequest {
                         prompt,
-                        profile_variant_label,
+                        executor_profile_id: executor_profile_id.clone(),
                     }),
                     cleanup_action,
                 ))),
@@ -521,7 +584,7 @@ pub trait ContainerService {
             let executor_action = ExecutorAction::new(
                 ExecutorActionType::CodingAgentInitialRequest(CodingAgentInitialRequest {
                     prompt,
-                    profile_variant_label,
+                    executor_profile_id: executor_profile_id.clone(),
                 }),
                 cleanup_action,
             );
@@ -596,14 +659,9 @@ pub trait ContainerService {
         match executor_action.typ() {
             ExecutorActionType::CodingAgentInitialRequest(request) => {
                 if let Some(msg_store) = self.get_msg_store_by_id(&execution_process.id).await {
-                    if let Ok(executor) =
-                        CodingAgent::from_profile_variant_label(&request.profile_variant_label)
+                    if let Some(executor) =
+                        ExecutorConfigs::get_cached().get_coding_agent(&request.executor_profile_id)
                     {
-                        // Prepend the initial user prompt as a normalized entry
-                        let user_entry = create_user_message(request.prompt.clone());
-                        msg_store
-                            .push_patch(ConversationPatch::add_normalized_entry(0, user_entry));
-
                         executor.normalize_logs(
                             msg_store,
                             &self.task_attempt_to_current_dir(task_attempt),
@@ -611,21 +669,16 @@ pub trait ContainerService {
                     } else {
                         tracing::error!(
                             "Failed to resolve profile '{:?}' for normalization",
-                            request.profile_variant_label
+                            request.executor_profile_id
                         );
                     }
                 }
             }
             ExecutorActionType::CodingAgentFollowUpRequest(request) => {
                 if let Some(msg_store) = self.get_msg_store_by_id(&execution_process.id).await {
-                    if let Ok(executor) =
-                        CodingAgent::from_profile_variant_label(&request.profile_variant_label)
+                    if let Some(executor) =
+                        ExecutorConfigs::get_cached().get_coding_agent(&request.executor_profile_id)
                     {
-                        // Prepend the follow-up user prompt as a normalized entry
-                        let user_entry = create_user_message(request.prompt.clone());
-                        msg_store
-                            .push_patch(ConversationPatch::add_normalized_entry(0, user_entry));
-
                         executor.normalize_logs(
                             msg_store,
                             &self.task_attempt_to_current_dir(task_attempt),
@@ -633,7 +686,7 @@ pub trait ContainerService {
                     } else {
                         tracing::error!(
                             "Failed to resolve profile '{:?}' for normalization",
-                            request.profile_variant_label
+                            request.get_executor_profile_id()
                         );
                     }
                 }
@@ -679,14 +732,5 @@ pub trait ContainerService {
 
         tracing::debug!("Started next action: {:?}", next_action);
         Ok(())
-    }
-}
-
-fn create_user_message(prompt: String) -> NormalizedEntry {
-    NormalizedEntry {
-        timestamp: None,
-        entry_type: NormalizedEntryType::UserMessage,
-        content: prompt,
-        metadata: None,
     }
 }

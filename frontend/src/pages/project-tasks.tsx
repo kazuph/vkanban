@@ -2,23 +2,13 @@ import { useCallback, useEffect, useState, useMemo } from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { Plus } from 'lucide-react';
+import { AlertTriangle, Plus } from 'lucide-react';
 import { Loader } from '@/components/ui/loader';
 import { projectsApi, tasksApi, attemptsApi } from '@/lib/api';
-import { useTaskDialog } from '@/contexts/task-dialog-context';
-import { ProjectForm } from '@/components/projects/project-form';
-import { TaskTemplateManager } from '@/components/TaskTemplateManager';
+import { openTaskForm } from '@/lib/openTaskForm';
 import { useKeyboardShortcuts } from '@/lib/keyboard-shortcuts';
 import { useSearch } from '@/contexts/search-context';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
-
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from '@/components/ui/dialog';
+import { useQuery } from '@tanstack/react-query';
 
 import {
   getKanbanSectionClasses,
@@ -29,8 +19,9 @@ import TaskKanbanBoard from '@/components/tasks/TaskKanbanBoard';
 import { TaskDetailsPanel } from '@/components/tasks/TaskDetailsPanel';
 import type { TaskWithAttemptStatus, Project, TaskAttempt } from 'shared/types';
 import type { DragEndEvent } from '@/components/ui/shadcn-io/kanban';
-import { Breadcrumb } from '@/components/ui/breadcrumb';
-import { Link } from 'react-router-dom';
+import { useProjectTasks } from '@/hooks/useProjectTasks';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import NiceModal from '@ebay/nice-modal-react';
 
 type Task = TaskWithAttemptStatus;
 
@@ -43,16 +34,27 @@ export function ProjectTasks() {
   const navigate = useNavigate();
   const location = useLocation();
 
-  const [tasks, setTasks] = useState<Task[]>([]);
   const [project, setProject] = useState<Project | null>(null);
-  // Local loading removed for tasks; rely on React Query
   const [error, setError] = useState<string | null>(null);
-  const { openCreate, openEdit, openDuplicate } = useTaskDialog();
-  const [isProjectSettingsOpen, setIsProjectSettingsOpen] = useState(false);
-  const { query: searchQuery } = useSearch();
+  // Helper functions to open task forms
+  const handleCreateTask = () => {
+    if (project?.id) {
+      openTaskForm({ projectId: project.id });
+    }
+  };
 
-  // Template management state
-  const [isTemplateManagerOpen, setIsTemplateManagerOpen] = useState(false);
+  const handleEditTask = (task: Task) => {
+    if (project?.id) {
+      openTaskForm({ projectId: project.id, task });
+    }
+  };
+
+  const handleDuplicateTask = (task: Task) => {
+    if (project?.id) {
+      openTaskForm({ projectId: project.id, initialTask: task });
+    }
+  };
+  const { query: searchQuery } = useSearch();
 
   // Panel state
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
@@ -64,8 +66,9 @@ export function ProjectTasks() {
   // Attempts fetching (only when task is selected)
   const { data: attempts = [] } = useQuery({
     queryKey: ['taskAttempts', selectedTask?.id],
-    queryFn: ({ signal }) => attemptsApi.getAll(selectedTask!.id, signal),
+    queryFn: () => attemptsApi.getAll(selectedTask!.id),
     enabled: !!selectedTask?.id,
+    refetchInterval: 5000,
   });
 
   // Selected attempt logic
@@ -93,26 +96,32 @@ export function ProjectTasks() {
     [navigate, projectId, selectedTask, isFullscreen]
   );
 
-  // Sync selectedTask with URL params
+  // Stream tasks for this project
+  const {
+    tasks,
+    tasksById,
+    isLoading,
+    error: streamError,
+  } = useProjectTasks(projectId);
+
+  // Sync selectedTask with URL params and live task updates
   useEffect(() => {
-    if (taskId && tasks.length > 0) {
-      const taskFromUrl = tasks.find((t) => t.id === taskId);
-      if (taskFromUrl && taskFromUrl !== selectedTask) {
-        setSelectedTask(taskFromUrl);
+    if (taskId) {
+      const t = taskId ? tasksById[taskId] : undefined;
+      if (t) {
+        setSelectedTask(t);
         setIsPanelOpen(true);
       }
-    } else if (!taskId && selectedTask) {
-      // Clear selection when no taskId in URL
+    } else {
       setSelectedTask(null);
       setIsPanelOpen(false);
     }
-  }, [taskId, tasks, selectedTask]);
+  }, [taskId, tasksById]);
 
   // Define task creation handler
   const handleCreateNewTask = useCallback(() => {
-    if (!projectId) return;
-    openCreate();
-  }, [projectId, openCreate]);
+    handleCreateTask();
+  }, [handleCreateTask]);
 
   // Full screen
 
@@ -125,71 +134,47 @@ export function ProjectTasks() {
     }
   }, [projectId]);
 
-  const handleCloseTemplateManager = useCallback(() => {
-    setIsTemplateManagerOpen(false);
-  }, []);
-  // Tasks query with safe polling
-  const queryClient = useQueryClient();
-  const {
-    data: queriedTasks = [],
-    isLoading: isTasksLoading,
-  } = useQuery({
-    queryKey: ['tasks', projectId],
-    queryFn: ({ signal }) => tasksApi.getAll(projectId!, signal),
-    enabled: !!projectId,
-    // Gentle polling (5s). React Query dedupes and cleans up automatically.
-    refetchInterval: 5000,
-    refetchIntervalInBackground: false,
-    // Prevent waterfall when projectId flips rapidly
-    placeholderData: (prev) => prev,
-  });
-
-  // Sync local tasks state (needed for optimistic updates + selection logic)
-  useEffect(() => {
-    setTasks((prevTasks) => {
-      const newTasks = queriedTasks;
-      if (JSON.stringify(prevTasks) === JSON.stringify(newTasks)) {
-        return prevTasks;
-      }
-
-      // Keep selectedTask in sync if present
-      setSelectedTask((prev) => {
-        if (!prev) return prev;
-        const updated = newTasks.find((t) => t.id === prev.id);
-        if (JSON.stringify(prev) === JSON.stringify(updated)) return prev;
-        return updated || prev;
-      });
-
-      return newTasks;
-    });
-  }, [queriedTasks]);
+  const handleClosePanel = useCallback(() => {
+    // setIsPanelOpen(false);
+    // setSelectedTask(null);
+    // Remove task ID from URL when closing panel
+    navigate(`/projects/${projectId}/tasks`, { replace: true });
+  }, [projectId, navigate]);
 
   const handleDeleteTask = useCallback(
-    async (taskId: string) => {
-      if (!confirm('Are you sure you want to delete this task?')) return;
-
-      try {
-        await tasksApi.delete(taskId);
-        await queryClient.invalidateQueries({ queryKey: ['tasks', projectId] });
-      } catch (error) {
-        setError('Failed to delete task');
+    (taskId: string) => {
+      const task = tasksById[taskId];
+      if (task) {
+        NiceModal.show('delete-task-confirmation', {
+          task,
+          projectId: projectId!,
+        })
+          .then(() => {
+            // Task was deleted, close panel if this task was selected
+            if (selectedTask?.id === taskId) {
+              handleClosePanel();
+            }
+          })
+          .catch(() => {
+            // Modal was cancelled - do nothing
+          });
       }
     },
-    [projectId, queryClient]
+    [tasksById, projectId, selectedTask, handleClosePanel]
   );
 
-  const handleEditTask = useCallback(
+  const handleEditTaskCallback = useCallback(
     (task: Task) => {
-      openEdit(task);
+      handleEditTask(task);
     },
-    [openEdit]
+    [handleEditTask]
   );
 
-  const handleDuplicateTask = useCallback(
+  const handleDuplicateTaskCallback = useCallback(
     (task: Task) => {
-      openDuplicate(task);
+      handleDuplicateTask(task);
     },
-    [openDuplicate]
+    [handleDuplicateTask]
   );
 
   const handleViewTaskDetails = useCallback(
@@ -205,169 +190,114 @@ export function ProjectTasks() {
     [projectId, navigate]
   );
 
-  const handleClosePanel = useCallback(() => {
-    // setIsPanelOpen(false);
-    // setSelectedTask(null);
-    // Remove task ID from URL when closing panel
-    navigate(`/projects/${projectId}/tasks`, { replace: true });
-  }, [projectId, navigate]);
-
-  const handleProjectSettingsSuccess = useCallback(() => {
-    setIsProjectSettingsOpen(false);
-    fetchProject(); // Refresh project data after settings change
-  }, [fetchProject]);
-
   const handleDragEnd = useCallback(
     async (event: DragEndEvent) => {
       const { active, over } = event;
-
       if (!over || !active.data.current) return;
 
-      const taskId = active.id as string;
+      const draggedTaskId = active.id as string;
       const newStatus = over.id as Task['status'];
-      const task = tasks.find((t) => t.id === taskId);
-
+      const task = tasksById[draggedTaskId];
       if (!task || task.status === newStatus) return;
 
-      // Optimistically update the UI immediately
-      const previousStatus = task.status;
-      setTasks((prev) =>
-        prev.map((t) => (t.id === taskId ? { ...t, status: newStatus } : t))
-      );
-
       try {
-        await tasksApi.update(taskId, {
+        await tasksApi.update(draggedTaskId, {
           title: task.title,
           description: task.description,
           status: newStatus,
           parent_task_attempt: task.parent_task_attempt,
           image_ids: null,
         });
+        // UI will update via SSE stream
       } catch (err) {
-        // Revert the optimistic update if the API call failed
-        setTasks((prev) =>
-          prev.map((t) =>
-            t.id === taskId ? { ...t, status: previousStatus } : t
-          )
-        );
         setError('Failed to update task status');
       }
     },
-    [tasks]
+    [tasksById]
   );
 
   // Setup keyboard shortcuts
   useKeyboardShortcuts({
     navigate,
     currentPath: window.location.pathname,
-    hasOpenDialog: isTemplateManagerOpen || isProjectSettingsOpen,
-    closeDialog: () => {}, // No local dialog to close
+    hasOpenDialog: false,
+    closeDialog: () => {},
     onC: handleCreateNewTask,
   });
 
-  // Initialize project data when projectId changes (tasks use React Query)
+  // Initialize project when projectId changes
   useEffect(() => {
     if (projectId) {
       fetchProject();
     }
   }, [projectId, fetchProject]);
 
-  // Handle direct navigation to task URLs
-  useEffect(() => {
-    if (taskId && tasks.length > 0) {
-      const task = tasks.find((t) => t.id === taskId);
-      if (task) {
-        setSelectedTask((prev) => {
-          if (JSON.stringify(prev) === JSON.stringify(task)) return prev;
-          return task;
-        });
-        setIsPanelOpen(true);
-      } else {
-        // Task not found in current array - refetch to get latest data
-        queryClient.invalidateQueries({ queryKey: ['tasks', projectId] });
-      }
-    } else if (taskId && tasks.length === 0 && !isTasksLoading) {
-      // If we have a taskId but no tasks loaded, fetch tasks
-      queryClient.invalidateQueries({ queryKey: ['tasks', projectId] });
-    } else if (!taskId) {
-      // Close panel when no taskId in URL
-      setIsPanelOpen(false);
-      setSelectedTask(null);
-    }
-  }, [taskId, tasks, isTasksLoading, queryClient, projectId]);
+  // Remove legacy direct-navigation handler; live sync above covers this
 
-  if (isTasksLoading) {
+  if (isLoading) {
     return <Loader message="Loading tasks..." size={32} className="py-8" />;
   }
 
   if (error) {
-    return <div className="text-center py-8 text-destructive">{error}</div>;
+    return (
+      <div className="p-4">
+        <Alert>
+          <AlertTitle className="flex items-center gap-2">
+            <AlertTriangle size="16" />
+            Error
+          </AlertTitle>
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      </div>
+    );
   }
 
   return (
-    <div className={"h-full flex flex-col"}>
-      {!isFullscreen && (
-        <div className="w-full border-b bg-background/60 backdrop-blur supports-[backdrop-filter]:bg-background/40">
-          <div className="w-full px-3 sm:px-4 py-2">
-            <div className="flex items-center justify-between gap-3 flex-wrap">
-              <Breadcrumb
-                className="flex-1 min-w-0"
-                items={[
-                  { label: 'Projects', to: '/projects' },
-                  project
-                    ? { label: project.name, to: `/projects/${projectId}` }
-                    : { label: '...' },
-                  { label: 'Tasks' },
-                  selectedTask ? { label: selectedTask.title } : undefined,
-                ].filter(Boolean) as any}
-              />
-              <div className="flex items-center gap-2">
-                <Button size="sm" variant="secondary" asChild>
-                  <Link to={`/projects/${projectId}`}>Project Settings</Link>
-                </Button>
-                <Button size="sm" onClick={handleCreateNewTask}>
-                  <Plus className="h-4 w-4 mr-2" /> New Task
-                </Button>
-              </div>
-            </div>
-          </div>
-        </div>
+    <div
+      className={`min-h-full ${getMainContainerClasses(isPanelOpen, isFullscreen)}`}
+    >
+      {streamError && (
+        <Alert className="w-full z-30 xl:sticky xl:top-0">
+          <AlertTitle className="flex items-center gap-2">
+            <AlertTriangle size="16" />
+            Reconnecting
+          </AlertTitle>
+          <AlertDescription>{streamError}</AlertDescription>
+        </Alert>
       )}
-      {/* Main area: takes remaining height below header */}
-      <div className={`flex-1 min-h-0 ${getMainContainerClasses(
-        isPanelOpen,
-        isFullscreen
-      )}`}>
+
+      {/* Kanban + Panel Container - uses side-by-side layout on xl+ */}
+      <div className="flex-1 min-h-0 xl:flex">
         {/* Left Column - Kanban Section */}
         <div className={getKanbanSectionClasses(isPanelOpen, isFullscreen)}>
-        {tasks.length === 0 ? (
-          <div className="max-w-7xl mx-auto mt-8">
-            <Card>
-              <CardContent className="text-center py-8">
-                <p className="text-muted-foreground">
-                  No tasks found for this project.
-                </p>
-                <Button className="mt-4" onClick={handleCreateNewTask}>
-                  <Plus className="h-4 w-4 mr-2" />
-                  Create First Task
-                </Button>
-              </CardContent>
-            </Card>
-          </div>
-        ) : (
-          <div className="w-full h-full overflow-x-auto">
-            <TaskKanbanBoard
-              tasks={tasks}
-              searchQuery={searchQuery}
-              onDragEnd={handleDragEnd}
-              onEditTask={handleEditTask}
-              onDeleteTask={handleDeleteTask}
-              onDuplicateTask={handleDuplicateTask}
-              onViewTaskDetails={handleViewTaskDetails}
-              isPanelOpen={isPanelOpen}
-            />
-          </div>
-        )}
+          {tasks.length === 0 ? (
+            <div className="max-w-7xl mx-auto mt-8">
+              <Card>
+                <CardContent className="text-center py-8">
+                  <p className="text-muted-foreground">
+                    No tasks found for this project.
+                  </p>
+                  <Button className="mt-4" onClick={handleCreateNewTask}>
+                    <Plus className="h-4 w-4 mr-2" />
+                    Create First Task
+                  </Button>
+                </CardContent>
+              </Card>
+            </div>
+          ) : (
+            <div className="w-full h-full overflow-x-auto">
+              <TaskKanbanBoard
+                tasks={tasks}
+                searchQuery={searchQuery}
+                onDragEnd={handleDragEnd}
+                onEditTask={handleEditTaskCallback}
+                onDeleteTask={handleDeleteTask}
+                onDuplicateTask={handleDuplicateTaskCallback}
+                onViewTaskDetails={handleViewTaskDetails}
+                isPanelOpen={isPanelOpen}
+              />
+            </div>
+          )}
         </div>
 
         {/* Right Column - Task Details Panel */}
@@ -377,9 +307,8 @@ export function ProjectTasks() {
             projectHasDevScript={!!project?.dev_script}
             projectId={projectId!}
             onClose={handleClosePanel}
-            onEditTask={handleEditTask}
+            onEditTask={handleEditTaskCallback}
             onDeleteTask={handleDeleteTask}
-            isDialogOpen={isProjectSettingsOpen}
             isFullScreen={isFullscreen}
             setFullScreen={
               selectedAttempt
@@ -396,33 +325,6 @@ export function ProjectTasks() {
           />
         )}
       </div>
-
-      {/* Dialogs - rendered at main container level to avoid stacking issues */}
-
-      <ProjectForm
-        open={isProjectSettingsOpen}
-        onClose={() => setIsProjectSettingsOpen(false)}
-        onSuccess={handleProjectSettingsSuccess}
-        project={project}
-      />
-
-      {/* Template Manager Dialog */}
-      <Dialog
-        open={isTemplateManagerOpen}
-        onOpenChange={setIsTemplateManagerOpen}
-      >
-        <DialogContent className="sm:max-w-[800px] max-h-[80vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Manage Templates</DialogTitle>
-          </DialogHeader>
-          <div className="py-4">
-            <TaskTemplateManager projectId={projectId} />
-          </div>
-          <DialogFooter>
-            <Button onClick={handleCloseTemplateManager}>Done</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

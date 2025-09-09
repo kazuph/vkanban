@@ -1,4 +1,5 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useMemo } from 'react';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { attemptsApi, executionProcessesApi } from '@/lib/api';
 import { useAttemptExecution } from '@/hooks/useAttemptExecution';
 import type { ExecutionProcess } from 'shared/types';
@@ -14,20 +15,21 @@ export function useDevServer(
   attemptId: string | undefined,
   options?: UseDevServerOptions
 ) {
+  const queryClient = useQueryClient();
   const { attemptData } = useAttemptExecution(attemptId);
-  const [isStarting, setIsStarting] = useState(false);
-  const [isStopping, setIsStopping] = useState(false);
 
-  // Find running dev server process
-  const runningDevServer = useMemo((): ExecutionProcess | undefined => {
-    return attemptData.processes.find(
+  // Find running dev server processes (multiple workspaces)
+  const runningDevServers = useMemo<ExecutionProcess[]>(() => {
+    return attemptData.processes.filter(
       (process) =>
         process.run_reason === 'devserver' && process.status === 'running'
     );
   }, [attemptData.processes]);
+  // Backward-compat: first running dev server (if any)
+  const runningDevServer = runningDevServers[0];
 
   // Find latest dev server process (for logs viewing)
-  const latestDevServerProcess = useMemo((): ExecutionProcess | undefined => {
+  const latestDevServerProcess = useMemo<ExecutionProcess | undefined>(() => {
     return [...attemptData.processes]
       .filter((process) => process.run_reason === 'devserver')
       .sort(
@@ -36,42 +38,65 @@ export function useDevServer(
       )[0];
   }, [attemptData.processes]);
 
-  const start = useCallback(async () => {
-    if (!attemptId) return;
-
-    setIsStarting(true);
-    try {
+  // Start mutation
+  const startMutation = useMutation({
+    mutationKey: ['startDevServer', attemptId],
+    mutationFn: async () => {
+      if (!attemptId) return;
       await attemptsApi.startDevServer(attemptId);
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: ['executionProcesses', attemptId],
+      });
       options?.onStartSuccess?.();
-    } catch (err) {
+    },
+    onError: (err) => {
       console.error('Failed to start dev server:', err);
       options?.onStartError?.(err);
-    } finally {
-      setIsStarting(false);
-    }
-  }, [attemptId, options?.onStartSuccess, options?.onStartError]);
+    },
+  });
 
-  const stop = useCallback(async () => {
-    if (!runningDevServer) return;
-
-    setIsStopping(true);
-    try {
-      await executionProcessesApi.stopExecutionProcess(runningDevServer.id);
+  // Stop mutation
+  const stopMutation = useMutation({
+    mutationKey: ['stopDevServer', runningDevServers.map((p) => p.id).join(',')],
+    mutationFn: async () => {
+      if (!runningDevServers.length) return;
+      // Stop all running dev servers for this attempt
+      for (const p of runningDevServers) {
+        try {
+          await executionProcessesApi.stopExecutionProcess(p.id);
+        } catch (e) {
+          console.error('Failed to stop dev server process', p.id, e);
+        }
+      }
+    },
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: ['executionProcesses', attemptId],
+        }),
+        runningDevServer
+          ? queryClient.invalidateQueries({
+              queryKey: ['processDetails', runningDevServer.id],
+            })
+          : Promise.resolve(),
+      ]);
       options?.onStopSuccess?.();
-    } catch (err) {
+    },
+    onError: (err) => {
       console.error('Failed to stop dev server:', err);
       options?.onStopError?.(err);
-    } finally {
-      setIsStopping(false);
-    }
-  }, [runningDevServer, options?.onStopSuccess, options?.onStopError]);
+    },
+  });
 
   return {
-    start,
-    stop,
-    isStarting,
-    isStopping,
+    start: startMutation.mutate,
+    stop: stopMutation.mutate,
+    isStarting: startMutation.isPending,
+    isStopping: stopMutation.isPending,
     runningDevServer,
+    runningDevServers,
     latestDevServerProcess,
   };
 }

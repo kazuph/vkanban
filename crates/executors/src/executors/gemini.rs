@@ -1,8 +1,13 @@
-use std::{path::PathBuf, process::Stdio, sync::Arc};
+use std::{
+    path::{Path, PathBuf},
+    process::Stdio,
+    sync::Arc,
+};
 
 use async_trait::async_trait;
 use command_group::{AsyncCommandGroup, AsyncGroupChild};
 use futures::{StreamExt, stream::BoxStream};
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use tokio::{
     fs::{self, OpenOptions},
@@ -13,8 +18,8 @@ use ts_rs::TS;
 use utils::{msg_store::MsgStore, shell::get_shell_command};
 
 use crate::{
-    command::CommandBuilder,
-    executors::{ExecutorError, StandardCodingAgentExecutor},
+    command::{CmdOverrides, CommandBuilder, apply_overrides},
+    executors::{AppendPrompt, ExecutorError, StandardCodingAgentExecutor},
     logs::{
         NormalizedEntry, NormalizedEntryType, plain_text_processor::PlainTextLogProcessor,
         stderr_processor::normalize_stderr_logs, utils::EntryIndexProvider,
@@ -22,24 +27,63 @@ use crate::{
     stdout_dup,
 };
 
-/// An executor that uses Gemini to process tasks
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, TS)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, TS, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum GeminiModel {
+    Default, // no --model flag
+    Flash,   // --model gemini-2.5-flash
+}
+
+impl GeminiModel {
+    fn base_command(&self) -> &'static str {
+        "npx -y @google/gemini-cli@latest"
+    }
+
+    fn build_command_builder(&self) -> CommandBuilder {
+        let mut builder = CommandBuilder::new(self.base_command());
+
+        if let GeminiModel::Flash = self {
+            builder = builder.extend_params(["--model", "gemini-2.5-flash"]);
+        }
+
+        builder
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, TS, JsonSchema)]
 pub struct Gemini {
-    pub command: CommandBuilder,
-    pub append_prompt: Option<String>,
+    #[serde(default)]
+    pub append_prompt: AppendPrompt,
+    pub model: GeminiModel,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub yolo: Option<bool>,
+    #[serde(flatten)]
+    pub cmd: CmdOverrides,
+}
+
+impl Gemini {
+    fn build_command_builder(&self) -> CommandBuilder {
+        let mut builder = self.model.build_command_builder();
+
+        if self.yolo.unwrap_or(false) {
+            builder = builder.extend_params(["--yolo"]);
+        }
+
+        apply_overrides(builder, &self.cmd)
+    }
 }
 
 #[async_trait]
 impl StandardCodingAgentExecutor for Gemini {
     async fn spawn(
         &self,
-        current_dir: &PathBuf,
+        current_dir: &Path,
         prompt: &str,
     ) -> Result<AsyncGroupChild, ExecutorError> {
         let (shell_cmd, shell_arg) = get_shell_command();
-        let gemini_command = self.command.build_initial();
+        let gemini_command = self.build_command_builder().build_initial();
 
-        let combined_prompt = utils::text::combine_prompt(&self.append_prompt, prompt);
+        let combined_prompt = self.append_prompt.combine_prompt(prompt);
 
         let mut command = Command::new(shell_cmd);
         command
@@ -64,7 +108,7 @@ impl StandardCodingAgentExecutor for Gemini {
         let duplicate_stdout = stdout_dup::duplicate_stdout(&mut child)?;
         tokio::spawn(Self::record_session(
             duplicate_stdout,
-            current_dir.clone(),
+            current_dir.to_path_buf(),
             prompt.to_string(),
             false,
         ));
@@ -74,7 +118,7 @@ impl StandardCodingAgentExecutor for Gemini {
 
     async fn spawn_follow_up(
         &self,
-        current_dir: &PathBuf,
+        current_dir: &Path,
         prompt: &str,
         _session_id: &str,
     ) -> Result<AsyncGroupChild, ExecutorError> {
@@ -82,7 +126,7 @@ impl StandardCodingAgentExecutor for Gemini {
         let followup_prompt = self.build_followup_prompt(current_dir, prompt).await?;
 
         let (shell_cmd, shell_arg) = get_shell_command();
-        let gemini_command = self.command.build_follow_up(&[]);
+        let gemini_command = self.build_command_builder().build_follow_up(&[]);
 
         let mut command = Command::new(shell_cmd);
 
@@ -108,7 +152,7 @@ impl StandardCodingAgentExecutor for Gemini {
         let duplicate_stdout = stdout_dup::duplicate_stdout(&mut child)?;
         tokio::spawn(Self::record_session(
             duplicate_stdout,
-            current_dir.clone(),
+            current_dir.to_path_buf(),
             prompt.to_string(),
             true,
         ));
@@ -134,7 +178,7 @@ impl StandardCodingAgentExecutor for Gemini {
     /// Sets up log normalization for the Gemini executor:
     /// - stderr via [`normalize_stderr_logs`]
     /// - stdout via [`PlainTextLogProcessor`] with Gemini-specific formatting and default heuristics
-    fn normalize_logs(&self, msg_store: Arc<MsgStore>, worktree_path: &PathBuf) {
+    fn normalize_logs(&self, msg_store: Arc<MsgStore>, worktree_path: &Path) {
         let entry_index_counter = EntryIndexProvider::start_from(&msg_store);
         normalize_stderr_logs(msg_store.clone(), entry_index_counter.clone());
 
@@ -152,24 +196,7 @@ impl StandardCodingAgentExecutor for Gemini {
             let mut stdout = msg_store.stdout_chunked_stream();
 
             // Create a processor with Gemini-specific formatting
-            let mut processor = PlainTextLogProcessor::builder()
-                .normalized_entry_producer(Box::new(|content: String| NormalizedEntry {
-                    timestamp: None,
-                    entry_type: NormalizedEntryType::AssistantMessage,
-                    content,
-                    metadata: None,
-                }))
-                .format_chunk(Box::new(|partial_line: Option<&str>, chunk: String| {
-                    Self::format_stdout_chunk(&chunk, partial_line.unwrap_or(""))
-                }))
-                // Gemini CLI sometimes prints a non-conversational noise
-                .transform_lines({
-                    Box::new(move |lines: &mut Vec<String>| {
-                        lines.retain(|line| line != "Data collection is disabled.\n");
-                    })
-                })
-                .index_provider(entry_index_counter)
-                .build();
+            let mut processor = Self::create_gemini_style_processor(entry_index_counter);
 
             while let Some(Ok(chunk)) = stdout.next().await {
                 for patch in processor.process(chunk) {
@@ -178,9 +205,38 @@ impl StandardCodingAgentExecutor for Gemini {
             }
         });
     }
+
+    // MCP configuration methods
+    fn default_mcp_config_path(&self) -> Option<std::path::PathBuf> {
+        dirs::home_dir().map(|home| home.join(".gemini").join("settings.json"))
+    }
 }
 
 impl Gemini {
+    /// Creates a PlainTextLogProcessor that applies Gemini's sentence-break heuristics.
+    ///
+    /// This processor formats chunks by inserting line breaks at period-to-capital transitions
+    /// and filters out Gemini CLI noise messages.
+    pub(crate) fn create_gemini_style_processor(
+        index_provider: EntryIndexProvider,
+    ) -> PlainTextLogProcessor {
+        PlainTextLogProcessor::builder()
+            .normalized_entry_producer(Box::new(|content: String| NormalizedEntry {
+                timestamp: None,
+                entry_type: NormalizedEntryType::AssistantMessage,
+                content,
+                metadata: None,
+            }))
+            .format_chunk(Box::new(|partial, chunk| {
+                Self::format_stdout_chunk(&chunk, partial.unwrap_or(""))
+            }))
+            .transform_lines(Box::new(|lines: &mut Vec<String>| {
+                lines.retain(|l| l != "Data collection is disabled.\n");
+            }))
+            .index_provider(index_provider)
+            .build()
+    }
+
     /// Make Gemini output more readable by inserting line breaks where periods are directly
     /// followed by capital letters (common Gemini CLI formatting issue).
     /// Handles both intra-chunk and cross-chunk period-to-capital transitions.
@@ -282,7 +338,7 @@ impl Gemini {
     /// Build comprehensive prompt with session context for follow-up execution
     async fn build_followup_prompt(
         &self,
-        current_dir: &PathBuf,
+        current_dir: &Path,
         prompt: &str,
     ) -> Result<String, ExecutorError> {
         let session_file_path = Self::get_session_file_path(current_dir).await;
@@ -307,7 +363,7 @@ The following is the conversation history from this session:
 === INSTRUCTIONS ===
 You are continuing work on the above task. The execution history shows the previous conversation in this session. Please continue from where the previous execution left off, taking into account all the context provided above.{}
 "#,
-            self.append_prompt.clone().unwrap_or_default(),
+            self.append_prompt.get().unwrap_or_default(),
         ))
     }
 
@@ -328,7 +384,7 @@ You are continuing work on the above task. The execution history shows the previ
         utils::path::get_vibe_kanban_temp_dir().join("gemini_sessions")
     }
 
-    async fn get_session_file_path(current_dir: &PathBuf) -> PathBuf {
+    async fn get_session_file_path(current_dir: &Path) -> PathBuf {
         let file_name = current_dir.file_name().unwrap_or_default();
         let new_base = Self::get_sessions_base_dir();
         let new_path = new_base.join(file_name);

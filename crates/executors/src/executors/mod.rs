@@ -1,10 +1,13 @@
-use std::{path::PathBuf, sync::Arc};
+use std::{path::Path, sync::Arc};
 
 use async_trait::async_trait;
 use command_group::AsyncGroupChild;
 use enum_dispatch::enum_dispatch;
 use futures_io::Error as FuturesIoError;
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use sqlx::Type;
+use strum_macros::{Display, EnumDiscriminants, EnumString, VariantNames};
 use thiserror::Error;
 use ts_rs::TS;
 use utils::msg_store::MsgStore;
@@ -12,10 +15,9 @@ use utils::msg_store::MsgStore;
 use crate::{
     executors::{
         amp::Amp, claude::ClaudeCode, codex::Codex, cursor::Cursor, gemini::Gemini,
-        opencode::Opencode,
+        opencode::Opencode, qwen::QwenCode,
     },
     mcp_config::McpConfig,
-    profile::{ProfileConfigs, ProfileVariantLabel},
 };
 
 pub mod amp;
@@ -24,6 +26,13 @@ pub mod codex;
 pub mod cursor;
 pub mod gemini;
 pub mod opencode;
+pub mod qwen;
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, TS)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum BaseAgentCapability {
+    RestoreCheckpoint,
+}
 
 #[derive(Debug, Error)]
 pub enum ExecutorError {
@@ -44,8 +53,20 @@ pub enum ExecutorError {
 }
 
 #[enum_dispatch]
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, TS)]
+#[derive(
+    Debug, Clone, Serialize, Deserialize, PartialEq, TS, Display, EnumDiscriminants, VariantNames,
+)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+#[strum(serialize_all = "SCREAMING_SNAKE_CASE")]
+#[strum_discriminants(
+    name(BaseCodingAgent),
+    // Only add Hash; Eq/PartialEq are already provided by EnumDiscriminants.
+    derive(EnumString, Hash, strum_macros::Display, Serialize, Deserialize, TS, Type),
+    strum(serialize_all = "SCREAMING_SNAKE_CASE"),
+    ts(use_ts_enum),
+    serde(rename_all = "SCREAMING_SNAKE_CASE"),
+    sqlx(type_name = "TEXT", rename_all = "SCREAMING_SNAKE_CASE")
+)]
 pub enum CodingAgent {
     ClaudeCode,
     Amp,
@@ -53,40 +74,10 @@ pub enum CodingAgent {
     Codex,
     Opencode,
     Cursor,
+    QwenCode,
 }
 
 impl CodingAgent {
-    /// Create a CodingAgent from a profile variant
-    /// Loads profile from AgentProfiles (both default and custom profiles)
-    pub fn from_profile_variant_label(
-        profile_variant_label: &ProfileVariantLabel,
-    ) -> Result<Self, ExecutorError> {
-        if let Some(profile_config) =
-            ProfileConfigs::get_cached().get_profile(&profile_variant_label.profile)
-        {
-            if let Some(variant_name) = &profile_variant_label.variant {
-                if let Some(variant) = profile_config.get_variant(variant_name) {
-                    Ok(variant.agent.clone())
-                } else {
-                    Err(ExecutorError::UnknownExecutorType(format!(
-                        "Unknown mode: {variant_name}"
-                    )))
-                }
-            } else {
-                Ok(profile_config.default.agent.clone())
-            }
-        } else {
-            Err(ExecutorError::UnknownExecutorType(format!(
-                "Unknown profile: {}",
-                profile_variant_label.profile
-            )))
-        }
-    }
-
-    pub fn supports_mcp(&self) -> bool {
-        self.default_mcp_config_path().is_some()
-    }
-
     pub fn get_mcp_config(&self) -> McpConfig {
         match self {
             Self::Codex(_) => McpConfig::new(
@@ -138,32 +129,16 @@ impl CodingAgent {
         }
     }
 
-    pub fn default_mcp_config_path(&self) -> Option<PathBuf> {
+    pub fn supports_mcp(&self) -> bool {
+        self.default_mcp_config_path().is_some()
+    }
+
+    pub fn capabilities(&self) -> Vec<BaseAgentCapability> {
         match self {
-            //ExecutorConfig::CharmOpencode => {
-            //dirs::home_dir().map(|home| home.join(".opencode.json"))
-            //}
-            Self::ClaudeCode(_) => dirs::home_dir().map(|home| home.join(".claude.json")),
-            //ExecutorConfig::ClaudePlan => dirs::home_dir().map(|home| home.join(".claude.json")),
-            Self::Opencode(_) => {
-                #[cfg(unix)]
-                {
-                    xdg::BaseDirectories::with_prefix("opencode").get_config_file("opencode.json")
-                }
-                #[cfg(not(unix))]
-                {
-                    dirs::config_dir().map(|config| config.join("opencode").join("opencode.json"))
-                }
-            }
-            //ExecutorConfig::Aider => None,
-            Self::Codex(_) => dirs::home_dir().map(|home| home.join(".codex").join("config.toml")),
-            Self::Amp(_) => {
-                dirs::config_dir().map(|config| config.join("amp").join("settings.json"))
-            }
-            Self::Gemini(_) => {
-                dirs::home_dir().map(|home| home.join(".gemini").join("settings.json"))
-            }
-            Self::Cursor(_) => dirs::home_dir().map(|home| home.join(".cursor").join("mcp.json")),
+            Self::ClaudeCode(_) => vec![BaseAgentCapability::RestoreCheckpoint],
+            Self::Amp(_) => vec![BaseAgentCapability::RestoreCheckpoint],
+            Self::Codex(_) => vec![BaseAgentCapability::RestoreCheckpoint],
+            Self::Gemini(_) | Self::Opencode(_) | Self::Cursor(_) | Self::QwenCode(_) => vec![],
         }
     }
 }
@@ -173,14 +148,46 @@ impl CodingAgent {
 pub trait StandardCodingAgentExecutor {
     async fn spawn(
         &self,
-        current_dir: &PathBuf,
+        current_dir: &Path,
         prompt: &str,
     ) -> Result<AsyncGroupChild, ExecutorError>;
     async fn spawn_follow_up(
         &self,
-        current_dir: &PathBuf,
+        current_dir: &Path,
         prompt: &str,
         session_id: &str,
     ) -> Result<AsyncGroupChild, ExecutorError>;
-    fn normalize_logs(&self, _raw_logs_event_store: Arc<MsgStore>, _worktree_path: &PathBuf);
+    fn normalize_logs(&self, _raw_logs_event_store: Arc<MsgStore>, _worktree_path: &Path);
+
+    // MCP configuration methods
+    fn default_mcp_config_path(&self) -> Option<std::path::PathBuf>;
+
+    async fn check_availability(&self) -> bool {
+        self.default_mcp_config_path()
+            .map(|path| path.exists())
+            .unwrap_or(false)
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, TS, JsonSchema)]
+#[serde(transparent)]
+#[schemars(
+    title = "Append Prompt",
+    description = "Extra text appended to the prompt",
+    extend("format" = "textarea")
+)]
+#[derive(Default)]
+pub struct AppendPrompt(pub Option<String>);
+
+impl AppendPrompt {
+    pub fn get(&self) -> Option<String> {
+        self.0.clone()
+    }
+
+    pub fn combine_prompt(&self, prompt: &str) -> String {
+        match self {
+            AppendPrompt(Some(value)) => format!("{prompt}{value}"),
+            AppendPrompt(None) => prompt.to_string(),
+        }
+    }
 }

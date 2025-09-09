@@ -1,23 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from '@/components/ui/dialog';
 import { Plus, Edit2, Trash2, Loader2 } from 'lucide-react';
 import { templatesApi } from '@/lib/api';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import type {
-  TaskTemplate,
-  CreateTaskTemplate,
-  UpdateTaskTemplate,
-} from 'shared/types';
+import { showTaskTemplateEdit } from '@/lib/modals';
+import type { TaskTemplate } from 'shared/types';
 
 interface TaskTemplateManagerProps {
   projectId?: string;
@@ -28,182 +14,55 @@ export function TaskTemplateManager({
   projectId,
   isGlobal = false,
 }: TaskTemplateManagerProps) {
-  const queryClient = useQueryClient();
   const [templates, setTemplates] = useState<TaskTemplate[]>([]);
   const [loading, setLoading] = useState(true);
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [editingTemplate, setEditingTemplate] = useState<TaskTemplate | null>(
-    null
-  );
-  const [formData, setFormData] = useState({
-    template_name: '',
-    title: '',
-    description: '',
-  });
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
-  // Query templates for this view
-  const projectTemplatesQuery = useQuery({
-    queryKey: ['templates', 'project', projectId ?? 'none'],
-    queryFn: ({ signal }) =>
-      projectId ? templatesApi.listByProject(projectId, signal) : Promise.resolve([]),
-    enabled: !!projectId && !isGlobal,
-    staleTime: 30_000,
-  });
-
-  const globalTemplatesQuery = useQuery({
-    queryKey: ['templates', 'global'],
-    queryFn: ({ signal }) => templatesApi.listGlobal(signal),
-    enabled: isGlobal || !projectId ? true : false,
-    staleTime: 30_000,
-  });
-
-  useEffect(() => {
-    setLoading(projectTemplatesQuery.isLoading || globalTemplatesQuery.isLoading);
-    const list: TaskTemplate[] = [];
-    if (!isGlobal && projectTemplatesQuery.data) list.push(...projectTemplatesQuery.data);
-    if (isGlobal && globalTemplatesQuery.data) list.push(...globalTemplatesQuery.data);
-    if (!isGlobal && globalTemplatesQuery.data) list.push(...globalTemplatesQuery.data);
-    if (list.length || (!projectTemplatesQuery.isLoading && !globalTemplatesQuery.isLoading)) {
-      // Filter to scope
-      const filtered = list.filter((t) => (isGlobal ? t.project_id === null : t.project_id === projectId));
-      setTemplates(filtered);
-    }
-  }, [
-    isGlobal,
-    projectId,
-    projectTemplatesQuery.isLoading,
-    globalTemplatesQuery.isLoading,
-    projectTemplatesQuery.data,
-    globalTemplatesQuery.data,
-  ]);
-
-  const handleOpenDialog = useCallback((template?: TaskTemplate) => {
-    if (template) {
-      setEditingTemplate(template);
-      setFormData({
-        template_name: template.template_name,
-        title: template.title,
-        description: template.description || '',
-      });
-    } else {
-      setEditingTemplate(null);
-      setFormData({
-        template_name: '',
-        title: '',
-        description: '',
-      });
-    }
-    setError(null);
-    setIsDialogOpen(true);
-  }, []);
-
-  const handleCloseDialog = useCallback(() => {
-    setIsDialogOpen(false);
-    setEditingTemplate(null);
-    setFormData({
-      template_name: '',
-      title: '',
-      description: '',
-    });
-    setError(null);
-  }, []);
-
-  const createMutation = useMutation({
-    mutationFn: (createData: CreateTaskTemplate) => templatesApi.create(createData),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ['templates'] });
-    },
-  });
-
-  // Helper to refresh templates queries
   const fetchTemplates = useCallback(async () => {
-    await Promise.all([
-      queryClient.invalidateQueries({
-        queryKey: ['templates', 'project', projectId ?? 'none'],
-      }),
-      queryClient.invalidateQueries({
-        queryKey: ['templates', 'global'],
-      }),
-      queryClient.invalidateQueries({ queryKey: ['templates'] }),
-    ]);
-  }, [queryClient, projectId]);
-
-  const updateMutation = useMutation({
-    mutationFn: ({ id, update }: { id: string; update: UpdateTaskTemplate }) =>
-      templatesApi.update(id, update),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ['templates'] });
-    },
-  });
-
-  const deleteMutation = useMutation({
-    mutationFn: (id: string) => templatesApi.delete(id),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ['templates'] });
-    },
-  });
-
-  const handleSave = useCallback(async () => {
-    if (!formData.template_name.trim() || !formData.title.trim()) {
-      setError('Template name and title are required');
-      return;
-    }
-
-    setSaving(true);
-    setError(null);
-
+    setLoading(true);
     try {
-      if (editingTemplate) {
-        const updateData: UpdateTaskTemplate = {
-          template_name: formData.template_name,
-          title: formData.title,
-          description: formData.description || null,
-        };
-        await updateMutation.mutateAsync({ id: editingTemplate.id, update: updateData });
-      } else {
-        const createData: CreateTaskTemplate = {
-          project_id: isGlobal ? null : projectId || null,
-          template_name: formData.template_name,
-          title: formData.title,
-          description: formData.description || null,
-        };
-        await createMutation.mutateAsync(createData);
-      }
-      await fetchTemplates();
-      handleCloseDialog();
-    } catch (err: any) {
-      setError(err.message || 'Failed to save template');
+      const data = isGlobal
+        ? await templatesApi.listGlobal()
+        : projectId
+          ? await templatesApi.listByProject(projectId)
+          : [];
+
+      // Filter to show only templates for this specific scope
+      const filtered = data.filter((template) =>
+        isGlobal
+          ? template.project_id === null
+          : template.project_id === projectId
+      );
+
+      setTemplates(filtered);
+    } catch (err) {
+      console.error('Failed to fetch templates:', err);
     } finally {
-      setSaving(false);
+      setLoading(false);
     }
-  }, [
-    formData,
-    editingTemplate,
-    isGlobal,
-    projectId,
-    fetchTemplates,
-    handleCloseDialog,
-  ]);
+  }, [isGlobal, projectId]);
 
-  // Handle keyboard shortcuts
   useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      // Command/Ctrl + Enter to save template
-      if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
-        if (isDialogOpen && !saving) {
-          event.preventDefault();
-          handleSave();
-        }
-      }
-    };
+    fetchTemplates();
+  }, [fetchTemplates]);
 
-    if (isDialogOpen) {
-      document.addEventListener('keydown', handleKeyDown, true); // Use capture phase for priority
-      return () => document.removeEventListener('keydown', handleKeyDown, true);
-    }
-  }, [isDialogOpen, saving, handleSave]);
+  const handleOpenDialog = useCallback(
+    async (template?: TaskTemplate) => {
+      try {
+        const result = await showTaskTemplateEdit({
+          template: template || null,
+          projectId,
+          isGlobal,
+        });
+
+        if (result === 'saved') {
+          await fetchTemplates();
+        }
+      } catch (error) {
+        // User cancelled - do nothing
+      }
+    },
+    [projectId, isGlobal, fetchTemplates]
+  );
 
   const handleDelete = useCallback(
     async (template: TaskTemplate) => {
@@ -216,12 +75,13 @@ export function TaskTemplateManager({
       }
 
       try {
-        await deleteMutation.mutateAsync(template.id);
+        await templatesApi.delete(template.id);
+        await fetchTemplates();
       } catch (err) {
         console.error('Failed to delete template:', err);
       }
     },
-    [deleteMutation]
+    [fetchTemplates]
   );
 
   if (loading) {
@@ -315,66 +175,6 @@ export function TaskTemplateManager({
           </div>
         </div>
       )}
-
-      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent className="sm:max-w-[500px]">
-          <DialogHeader>
-            <DialogTitle>
-              {editingTemplate ? 'Edit Template' : 'Create Template'}
-            </DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div>
-              <Label htmlFor="template-name">Template Name</Label>
-              <Input
-                id="template-name"
-                value={formData.template_name}
-                onChange={(e) =>
-                  setFormData({ ...formData, template_name: e.target.value })
-                }
-                placeholder="e.g., Bug Fix, Feature Request"
-              />
-            </div>
-            <div>
-              <Label htmlFor="template-title">Default Title</Label>
-              <Input
-                id="template-title"
-                value={formData.title}
-                onChange={(e) =>
-                  setFormData({ ...formData, title: e.target.value })
-                }
-                placeholder="e.g., Fix bug in..."
-              />
-            </div>
-            <div>
-              <Label htmlFor="template-description">Default Description</Label>
-              <Textarea
-                id="template-description"
-                value={formData.description}
-                onChange={(e) =>
-                  setFormData({ ...formData, description: e.target.value })
-                }
-                placeholder="Enter a default description for tasks created with this template"
-                rows={4}
-              />
-            </div>
-            {error && <div className="text-sm text-destructive">{error}</div>}
-          </div>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={handleCloseDialog}
-              disabled={saving}
-            >
-              Cancel
-            </Button>
-            <Button onClick={handleSave} disabled={saving}>
-              {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              {editingTemplate ? 'Update' : 'Create'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

@@ -344,6 +344,8 @@ impl LocalContainerService {
                             tracing::warn!("Failed to update executor session summary: {}", e);
                         }
 
+                        // (moved) capture after-head commit occurs later, after commit/next-action handling
+
                         if matches!(
                             ctx.execution_process.status,
                             ExecutionProcessStatus::Completed
@@ -415,6 +417,24 @@ impl LocalContainerService {
                         }
                     }
 
+                    // Now that commit/next-action/finalization steps for this process are complete,
+                    // capture the HEAD OID as the definitive "after" state (best-effort).
+                    if let Ok(ctx) = ExecutionProcess::load_context(&db.pool, exec_id).await {
+                        let worktree_dir = container.task_attempt_to_current_dir(&ctx.task_attempt);
+                        if let Ok(head) = container.git().get_head_info(&worktree_dir)
+                            && let Err(e) = ExecutionProcess::update_after_head_commit(
+                                &db.pool, exec_id, &head.oid,
+                            )
+                            .await
+                        {
+                            tracing::warn!(
+                                "Failed to update after_head_commit for {}: {}",
+                                exec_id,
+                                e
+                            );
+                        }
+                    }
+
                     // Cleanup msg store
                     if let Some(msg_arc) = msg_stores.write().await.remove(&exec_id) {
                         msg_arc.push_finished();
@@ -445,6 +465,11 @@ impl LocalContainerService {
         format!("vk-{}-{}", short_uuid(attempt_id), task_title_id)
     }
 
+    pub fn git_branch_from_task_attempt(attempt_id: &Uuid, task_title: &str) -> String {
+        let task_title_id = git_branch_id(task_title);
+        format!("vk/{}-{}", short_uuid(attempt_id), task_title_id)
+    }
+
     async fn track_child_msgs_in_store(&self, id: Uuid, child: &mut AsyncGroupChild) {
         let store = Arc::new(MsgStore::new());
 
@@ -470,6 +495,7 @@ impl LocalContainerService {
     }
 
     /// Get the worktree path for a task attempt
+    #[allow(dead_code)]
     async fn get_worktree_path(
         &self,
         task_attempt: &TaskAttempt,
@@ -536,7 +562,6 @@ impl LocalContainerService {
     /// Create a live diff stream for ongoing attempts
     async fn create_live_diff_stream(
         &self,
-        project_repo_path: &Path,
         worktree_path: &Path,
         task_branch: &str,
         base_branch: &str,
@@ -563,7 +588,6 @@ impl LocalContainerService {
         .boxed();
 
         // Create live update stream
-        let project_repo_path = project_repo_path.to_path_buf();
         let worktree_path = worktree_path.to_path_buf();
         let task_branch = task_branch.to_string();
         let base_branch = base_branch.to_string();
@@ -583,7 +607,6 @@ impl LocalContainerService {
                             if !changed_paths.is_empty() {
                                 for event in Self::process_file_changes(
                                     &git_service,
-                                    &project_repo_path,
                                     &worktree_path,
                                     &task_branch,
                                     &base_branch,
@@ -635,7 +658,6 @@ impl LocalContainerService {
     /// Process file changes and generate diff events
     fn process_file_changes(
         git_service: &GitService,
-        project_repo_path: &Path,
         worktree_path: &Path,
         task_branch: &str,
         base_branch: &str,
@@ -703,9 +725,12 @@ impl ContainerService for LocalContainerService {
             .await?
             .ok_or(sqlx::Error::RowNotFound)?;
 
-        let task_branch_name =
+        let worktree_dir_name =
             LocalContainerService::dir_name_from_task_attempt(&task_attempt.id, &task.title);
-        let worktree_path = WorktreeManager::get_worktree_base_dir().join(&task_branch_name);
+        let worktree_path = WorktreeManager::get_worktree_base_dir().join(&worktree_dir_name);
+
+        let git_branch_name =
+            LocalContainerService::git_branch_from_task_attempt(&task_attempt.id, &task.title);
 
         let project = task
             .parent_project(&self.db.pool)
@@ -714,7 +739,7 @@ impl ContainerService for LocalContainerService {
 
         WorktreeManager::create_worktree(
             &project.git_repo_path,
-            &task_branch_name,
+            &git_branch_name,
             &worktree_path,
             &task_attempt.base_branch,
             true, // create new branch
@@ -729,6 +754,20 @@ impl ContainerService for LocalContainerService {
                 .await
                 .unwrap_or_else(|e| {
                     tracing::warn!("Failed to copy project files: {}", e);
+                });
+        }
+
+        // Copy .env* files for configured workspace directories (monorepo support)
+        if let Some(ws) = &project.workspace_dirs
+            && !ws.trim().is_empty()
+        {
+            self.copy_workspace_env_files(&project.git_repo_path, &worktree_path, ws)
+                .await
+                .unwrap_or_else(|e| {
+                    tracing::warn!(
+                        "Failed to copy workspace .env files to worktree: {}",
+                        e
+                    );
                 });
         }
 
@@ -749,7 +788,7 @@ impl ContainerService for LocalContainerService {
         )
         .await?;
 
-        TaskAttempt::update_branch(&self.db.pool, task_attempt.id, &task_branch_name).await?;
+        TaskAttempt::update_branch(&self.db.pool, task_attempt.id, &git_branch_name).await?;
 
         Ok(worktree_path.to_string_lossy().to_string())
     }
@@ -915,6 +954,19 @@ impl ContainerService for LocalContainerService {
             execution_process.id
         );
 
+        // Record after-head commit OID (best-effort)
+        if let Ok(ctx) = ExecutionProcess::load_context(&self.db.pool, execution_process.id).await {
+            let worktree = self.task_attempt_to_current_dir(&ctx.task_attempt);
+            if let Ok(head) = self.git().get_head_info(&worktree) {
+                let _ = ExecutionProcess::update_after_head_commit(
+                    &self.db.pool,
+                    execution_process.id,
+                    &head.oid,
+                )
+                .await;
+            }
+        }
+
         Ok(())
     }
 
@@ -958,13 +1010,8 @@ impl ContainerService for LocalContainerService {
         let worktree_path = PathBuf::from(container_ref);
 
         // Handle ongoing attempts (live streaming diff)
-        self.create_live_diff_stream(
-            &project_repo_path,
-            &worktree_path,
-            &task_branch,
-            &task_attempt.base_branch,
-        )
-        .await
+        self.create_live_diff_stream(&worktree_path, &task_branch, &task_attempt.base_branch)
+            .await
     }
 
     async fn try_commit_changes(&self, ctx: &ExecutionContext) -> Result<bool, ContainerError> {
@@ -1038,8 +1085,8 @@ impl ContainerService for LocalContainerService {
     /// Copy files from the original project directory to the worktree
     async fn copy_project_files(
         &self,
-        source_dir: &PathBuf,
-        target_dir: &PathBuf,
+        source_dir: &Path,
+        target_dir: &Path,
         copy_files: &str,
     ) -> Result<(), ContainerError> {
         let files: Vec<&str> = copy_files
@@ -1081,9 +1128,75 @@ impl ContainerService for LocalContainerService {
         }
         Ok(())
     }
+
 }
 
 impl LocalContainerService {
+    /// Copy .env* files for each workspace directory from the source repo to the worktree
+    async fn copy_workspace_env_files(
+        &self,
+        source_dir: &Path,
+        target_dir: &Path,
+        workspace_dirs: &str,
+    ) -> Result<(), ContainerError> {
+        let dirs: Vec<&str> = workspace_dirs
+            .split(',')
+            .map(|s| s.trim())
+            .filter(|s| !s.is_empty())
+            .collect();
+
+        for d in dirs {
+            let src_ws = source_dir.join(d);
+            let dst_ws = target_dir.join(d);
+            if !src_ws.exists() || !src_ws.is_dir() {
+                tracing::debug!("Workspace dir {:?} does not exist; skipping .env copy", src_ws);
+                continue;
+            }
+
+            if !dst_ws.exists() {
+                std::fs::create_dir_all(&dst_ws).map_err(|e| {
+                    ContainerError::Other(anyhow!(
+                        "Failed to create workspace dir {:?}: {}",
+                        dst_ws, e
+                    ))
+                })?;
+            }
+
+            // Copy files matching .env*
+            let read_dir = std::fs::read_dir(&src_ws).map_err(|e| {
+                ContainerError::Other(anyhow!(
+                    "Failed to read workspace dir {:?}: {}",
+                    src_ws, e
+                ))
+            })?;
+
+            for entry in read_dir {
+                let entry = entry.map_err(|e| {
+                    ContainerError::Other(anyhow!("Failed to read dir entry: {}", e))
+                })?;
+                let path = entry.path();
+                if path.is_file() {
+                    if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+                        if name == ".env" || name.starts_with(".env.") {
+                            let target = dst_ws.join(name);
+                            std::fs::copy(&path, &target).map_err(|e| {
+                                ContainerError::Other(anyhow!(
+                                    "Failed to copy {:?} to {:?}: {}",
+                                    path, target, e
+                                ))
+                            })?;
+                            tracing::info!(
+                                "Copied workspace env file {:?} to worktree",
+                                target
+                            );
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(())
+    }
     /// Extract the last assistant message from the MsgStore history
     fn extract_last_assistant_message(&self, exec_id: &Uuid) -> Option<String> {
         // Get the MsgStore for this execution

@@ -5,6 +5,7 @@ import {
   BranchStatus,
   CheckTokenResponse,
   Config,
+  CommitInfo,
   CreateFollowUpAttempt,
   CreateGitHubPrRequest,
   CreateTask,
@@ -13,6 +14,7 @@ import {
   DeviceFlowStartResponse,
   DevicePollStatus,
   DirectoryListResponse,
+  DirectoryEntry,
   EditorType,
   ExecutionProcess,
   GitBranch,
@@ -34,6 +36,8 @@ import {
   UpdateMcpServersBody,
   GetMcpServerResponse,
   ImageResponse,
+  RestoreAttemptRequest,
+  RestoreAttemptResult,
 } from 'shared/types';
 
 // Re-export types for convenience
@@ -230,10 +234,15 @@ export const projectsApi = {
     return handleApiResponse<void>(response);
   },
 
-  openEditor: async (id: string): Promise<void> => {
+  openEditor: async (id: string, editorType?: EditorType): Promise<void> => {
+    const requestBody: any = {};
+    if (editorType) requestBody.editor_type = editorType;
+
     const response = await makeRequest(`/api/projects/${id}/open-editor`, {
       method: 'POST',
-      body: JSON.stringify(null),
+      body: JSON.stringify(
+        Object.keys(requestBody).length > 0 ? requestBody : null
+      ),
     });
     return handleApiResponse<void>(response);
   },
@@ -246,10 +255,12 @@ export const projectsApi = {
   searchFiles: async (
     id: string,
     query: string,
+    mode?: string,
     options?: RequestInit
   ): Promise<SearchResult[]> => {
+    const modeParam = mode ? `&mode=${encodeURIComponent(mode)}` : '';
     const response = await makeRequest(
-      `/api/projects/${id}/search?q=${encodeURIComponent(query)}`,
+      `/api/projects/${id}/search?q=${encodeURIComponent(query)}${modeParam}`,
       options
     );
     return handleApiResponse<SearchResult[]>(response);
@@ -333,6 +344,26 @@ export const attemptsApi = {
       method: 'POST',
     });
     return handleApiResponse<void>(response);
+  },
+
+  restore: async (
+    attemptId: string,
+    processId: string,
+    opts?: { forceWhenDirty?: boolean; performGitReset?: boolean }
+  ): Promise<RestoreAttemptResult> => {
+    const body: RestoreAttemptRequest = {
+      process_id: processId,
+      force_when_dirty: opts?.forceWhenDirty ?? false,
+      perform_git_reset: opts?.performGitReset ?? true,
+    } as any;
+    const response = await makeRequest(
+      `/api/task-attempts/${attemptId}/restore`,
+      {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }
+    );
+    return handleApiResponse<RestoreAttemptResult>(response);
   },
 
   followUp: async (
@@ -446,6 +477,35 @@ export const attemptsApi = {
   },
 };
 
+// Extra helpers
+export const commitsApi = {
+  getInfo: async (attemptId: string, sha: string): Promise<CommitInfo> => {
+    const response = await makeRequest(
+      `/api/task-attempts/${attemptId}/commit-info?sha=${encodeURIComponent(
+        sha
+      )}`
+    );
+    return handleApiResponse<CommitInfo>(response);
+  },
+  compareToHead: async (
+    attemptId: string,
+    sha: string
+  ): Promise<{
+    head_oid: string;
+    target_oid: string;
+    ahead_from_head: number;
+    behind_from_head: number;
+    is_linear: boolean;
+  }> => {
+    const response = await makeRequest(
+      `/api/task-attempts/${attemptId}/commit-compare?sha=${encodeURIComponent(
+        sha
+      )}`
+    );
+    return handleApiResponse(response);
+  },
+};
+
 // Execution Process APIs
 export const executionProcessesApi = {
   getExecutionProcesses: async (
@@ -483,6 +543,14 @@ export const fileSystemApi = {
       `/api/filesystem/directory${queryParam}`
     );
     return handleApiResponse<DirectoryListResponse>(response);
+  },
+
+  listGitRepos: async (path?: string): Promise<DirectoryEntry[]> => {
+    const queryParam = path ? `?path=${encodeURIComponent(path)}` : '';
+    const response = await makeRequest(
+      `/api/filesystem/git-repos${queryParam}`
+    );
+    return handleApiResponse<DirectoryEntry[]>(response);
   },
 };
 
