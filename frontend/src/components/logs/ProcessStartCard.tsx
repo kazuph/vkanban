@@ -9,6 +9,7 @@ import {
 import type { ProcessStartPayload } from '@/types/logs';
 import type { ExecutorAction } from 'shared/types';
 import { PROCESS_RUN_REASONS } from '@/constants/processes';
+import React from 'react';
 
 interface ProcessStartCardProps {
   payload: ProcessStartPayload;
@@ -55,7 +56,13 @@ function ProcessStartCard({
     }
   };
 
-  const handleClick = () => {
+  const handleClick = (e: React.MouseEvent) => {
+    // Allow anchor clicks inside the header without toggling
+    const target = e.target as HTMLElement | null;
+    if (target && target.closest('a')) {
+      e.stopPropagation();
+      return;
+    }
     onToggle(payload.processId);
   };
 
@@ -67,6 +74,43 @@ function ProcessStartCard({
   };
 
   const label = getProcessLabel(payload);
+
+  const renderLabelWithLinks = (text: string) => {
+    const urlRegex = /https?:\/\/[^\s<'"`]+/gi;
+    const nodes: React.ReactNode[] = [];
+    let lastIndex = 0;
+    let match: RegExpExecArray | null;
+
+    while ((match = urlRegex.exec(text)) !== null) {
+      const full = match[0];
+      const start = match.index;
+      const end = start + full.length;
+
+      if (start > lastIndex) nodes.push(text.slice(lastIndex, start));
+
+      const m = /^(.*?)([)\],.;:!?]+)$/.exec(full);
+      const urlStr = (m ? m[1] : full) || full;
+      const trailing = m ? m[2] : '';
+
+      nodes.push(
+        <a
+          key={`${start}-${end}`}
+          href={urlStr}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="underline text-[hsl(var(--info))] hover:opacity-90"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {urlStr}
+        </a>
+      );
+      if (trailing) nodes.push(trailing);
+      lastIndex = end;
+    }
+
+    if (lastIndex < text.length) nodes.push(text.slice(lastIndex));
+    return nodes.length > 0 ? nodes : text;
+  };
   const shouldTruncate =
     isCollapsed && payload.runReason === PROCESS_RUN_REASONS.CODING_AGENT;
 
@@ -86,7 +130,7 @@ function ProcessStartCard({
             )}
             title={shouldTruncate ? label : undefined}
           >
-            {label}
+            {renderLabelWithLinks(label)}
           </span>
         </div>
         {onRestore &&
