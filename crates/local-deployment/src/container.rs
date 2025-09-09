@@ -737,8 +737,8 @@ impl ContainerService for LocalContainerService {
             .await?
             .ok_or(sqlx::Error::RowNotFound)?;
 
-        // Always try to refresh remotes before creating a worktree so the base is up to date.
-        // Use Git CLI here to respect user's auth/SSH config.
+        // Refresh remotes so the base branch reference is up-to-date before creating the worktree.
+        // Use the Git CLI here to respect the user's SSH/auth configuration. Non-fatal on failure.
         {
             let git = services::services::git_cli::GitCli::new();
             if let Err(e) = git.git(&project.git_repo_path, ["fetch", "--all", "--prune"]) {
@@ -750,11 +750,9 @@ impl ContainerService for LocalContainerService {
             }
         }
 
-        // If the configured base is a local branch with an upstream, prefer the remote tracking
-        // branch so the new attempt starts from the latest remote commit without mutating the
-        // user's local branch/working tree.
+        // Prefer a remote tracking ref (e.g., origin/main) as the effective base when available,
+        // so attempts start from the freshest state without mutating the user's local branch.
         let mut effective_base_branch = task_attempt.base_branch.clone();
-        // Try to resolve a remote tracking branch for the configured base; if present, prefer it.
         if let Ok(remote_name) = self
             .git()
             .get_remote_name_from_branch_name(&project.git_repo_path, &task_attempt.base_branch)
@@ -821,9 +819,8 @@ impl ContainerService for LocalContainerService {
         .await?;
 
         TaskAttempt::update_branch(&self.db.pool, task_attempt.id, &git_branch_name).await?;
-        // If we used a different base branch than originally recorded (e.g., switched to
-        // remote tracking ref like origin/main), persist it so downstream features (diff,
-        // rebase, status) compare against the same base we actually used.
+        // If we switched to a remote tracking base (e.g., origin/main), persist it so later
+        // diff/rebase/status operations compare against the same base we actually used.
         if effective_base_branch != task_attempt.base_branch {
             if let Err(e) = TaskAttempt::update_base_branch(
                 &self.db.pool,

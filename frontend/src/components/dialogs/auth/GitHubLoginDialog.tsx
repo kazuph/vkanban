@@ -38,13 +38,6 @@ const GitHubLoginDialog = NiceModal.create(() => {
       const data = await githubAuthApi.start();
       setDeviceState(data);
       setPolling(true);
-      // 1) 端末コードは後続の useEffect で自動コピー
-      // 2) ユーザー操作発端の同期コンテキストで新規タブを開く（ポップアップブロック回避）
-      try {
-        window.open(data.verification_uri, '_blank', 'noopener,noreferrer');
-      } catch (_) {
-        // 失敗してもUI上のリンク/ボタンから開けるので無視
-      }
     } catch (e: any) {
       console.error(e);
       setError(e?.message || 'Network error');

@@ -29,7 +29,6 @@ export function McpSettings() {
   const [mcpServers, setMcpServers] = useState('{}');
   const [mcpConfig, setMcpConfig] = useState<McpConfig | null>(null);
   const [mcpError, setMcpError] = useState<string | null>(null);
-  // react-query removed for MCP page; manual load is used to control profile key mapping
   const [mcpLoading, setMcpLoading] = useState(true);
   const [selectedProfile, setSelectedProfile] = useState<ExecutorConfig | null>(
     null
@@ -52,32 +51,36 @@ export function McpSettings() {
     }
   }, [config?.executor_profile, profiles, selectedProfile]);
 
-  // react-query removed; see effect below for manual load
-
-  // Reflect MCP config for the selected profile into local editor state
+  // Load existing MCP configuration when selected profile changes
   useEffect(() => {
     const loadMcpServersForProfile = async (profile: ExecutorConfig) => {
       // Reset state when loading
       setMcpLoading(true);
       setMcpError(null);
+      // Set default empty config based on agent type using strategy
       setMcpConfigPath('');
 
       try {
+        // Load MCP servers for the selected profile/agent
         // Find the key for this profile
         const profileKey = profiles
           ? Object.keys(profiles).find((key) => profiles[key] === profile)
           : null;
-        if (!profileKey) throw new Error('Profile key not found');
+        if (!profileKey) {
+          throw new Error('Profile key not found');
+        }
 
         const result = await mcpServersApi.load({
           executor: profileKey as BaseCodingAgent,
         });
         // Store the McpConfig from backend
         setMcpConfig(result.mcp_config);
+        // Create the full configuration structure using the schema
         const fullConfig = McpConfigStrategyGeneral.createFullConfig(
           result.mcp_config
         );
-        setMcpServers(JSON.stringify(fullConfig, null, 2));
+        const configJson = JSON.stringify(fullConfig, null, 2);
+        setMcpServers(configJson);
         setMcpConfigPath(result.config_path);
       } catch (err: any) {
         if (err?.message && err.message.includes('does not support MCP')) {
@@ -90,10 +93,11 @@ export function McpSettings() {
       }
     };
 
+    // Load MCP servers for the selected profile
     if (selectedProfile) {
       loadMcpServersForProfile(selectedProfile);
     }
-  }, [selectedProfile, profiles]);
+  }, [selectedProfile]);
 
   const handleMcpServersChange = (value: string) => {
     setMcpServers(value);
@@ -138,12 +142,12 @@ export function McpSettings() {
     }
   };
 
-  // Save handled inline in handleApplyMcpServers
-
   const handleApplyMcpServers = async () => {
     if (!selectedProfile || !mcpConfig) return;
+
     setMcpApplying(true);
     setMcpError(null);
+
     try {
       // Validate and save MCP configuration
       if (mcpServers.trim()) {

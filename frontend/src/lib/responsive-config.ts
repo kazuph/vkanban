@@ -35,7 +35,7 @@ export const getTaskPanelClasses = (forceFullScreen: boolean) => {
     : [
         `${PANEL_SIDE_BY_SIDE_BREAKPOINT}:relative`,
         `${PANEL_SIDE_BY_SIDE_BREAKPOINT}:inset-auto`,
-        `${PANEL_SIDE_BY_SIDE_BREAKPOINT}:z-30`,
+        `${PANEL_SIDE_BY_SIDE_BREAKPOINT}:z-auto`,
         `${PANEL_SIDE_BY_SIDE_BREAKPOINT}:h-full`,
         `${PANEL_SIDE_BY_SIDE_BREAKPOINT}:w-[800px]`,
       ].join(' ');
@@ -68,12 +68,7 @@ export const getKanbanSectionClasses = (
   isPanelOpen: boolean,
   forceFullScreen: boolean
 ) => {
-  // Avoid h-full so the board height accounts for header above.
-  // Note: We DO want the kanban area to fill the remaining height of the page
-  // at all breakpoints, otherwise the board collapses to its content height on
-  // small screens, leaving large empty space below. Using `h-full` here works
-  // well because the parent wrappers already define explicit heights.
-  const baseClasses = 'min-h-0 h-full w-full';
+  const baseClasses = 'h-full w-full';
 
   if (!isPanelOpen) return baseClasses;
 

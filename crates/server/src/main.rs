@@ -11,7 +11,7 @@ use utils::{
     port_file::write_port_file,
     sentry::sentry_layer,
 };
-use executors::profile::ProfileConfigs;
+use executors::profile::ExecutorConfigs;
 
 #[derive(Debug, Error)]
 pub enum VibeKanbanError {
@@ -46,7 +46,7 @@ async fn main() -> Result<(), VibeKanbanError> {
     // Ensure profiles.json exists so the frontend can read/edit it without warnings
     let profiles_path = profiles_path();
     if !profiles_path.exists() {
-        match serde_json::to_string_pretty(&ProfileConfigs::from_defaults()) {
+        match serde_json::to_string_pretty(&ExecutorConfigs::from_defaults()) {
             Ok(defaults) => {
                 if let Err(e) = std::fs::write(&profiles_path, defaults) {
                     tracing::warn!("Failed to create default profiles.json at {:?}: {}", profiles_path, e);
