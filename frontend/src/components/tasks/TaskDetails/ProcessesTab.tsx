@@ -10,7 +10,7 @@ import {
   ArrowLeft,
 } from 'lucide-react';
 import { executionProcessesApi } from '@/lib/api.ts';
-import { ProfileVariantBadge } from '@/components/common/ProfileVariantBadge.tsx';
+// import { ProfileVariantBadge } from '@/components/common/ProfileVariantBadge.tsx';
 import { useAttemptExecution } from '@/hooks';
 import ProcessLogsViewer from './ProcessLogsViewer';
 import type { ExecutionProcessStatus, ExecutionProcess } from 'shared/types';
@@ -161,21 +161,53 @@ function ProcessesTab({ attemptId }: ProcessesTabProps) {
                           Deleted
                         </span>
                       )}
-                      {
-                        <p className="text-sm text-muted-foreground mt-1">
-                          Agent:{' '}
-                          {process.executor_action.typ.type ===
-                            'CodingAgentInitialRequest' ||
-                          process.executor_action.typ.type ===
-                            'CodingAgentFollowUpRequest' ? (
-                            <ProfileVariantBadge
-                              profileVariant={
-                                process.executor_action.typ.executor_profile_id
-                              }
-                            />
-                          ) : null}
-                        </p>
-                      }
+                      {(() => {
+                        const t = process.executor_action.typ as any;
+                        if (
+                          t?.type === 'CodingAgentInitialRequest' ||
+                          t?.type === 'CodingAgentFollowUpRequest'
+                        ) {
+                          const exec = t.executor_profile_id?.executor as
+                            | string
+                            | undefined;
+                          const variant = t.executor_profile_id?.variant as
+                            | string
+                            | null
+                            | undefined;
+
+                          // Derive settings label
+                          let setting: string | null = null;
+                          if (exec === 'CODEX') {
+                            const m = (t.codex_model_override || '') as string;
+                            // Map well-known models → levels; otherwise show raw
+                            setting = m
+                              ? m === 'gpt-5'
+                                ? 'high'
+                                : m === 'codex-mini-latest'
+                                  ? 'medium'
+                                  : m === 'o4-mini'
+                                    ? 'low'
+                                    : m
+                              : 'default';
+                          } else if (exec === 'CLAUDE_CODE') {
+                            const m = (t.claude_model_override || '') as string;
+                            setting = m ? m : 'default';
+                          }
+
+                          const execName = exec === 'CLAUDE_CODE' ? 'Claude Code' : exec || 'AGENT';
+                          const label = `${execName}(${setting || 'default'})`;
+
+                          return (
+                            <p className="text-sm text-muted-foreground mt-1">
+                              Agent: {label}
+                              {variant ? (
+                                <span className="ml-1 text-xs">[{variant}]</span>
+                              ) : null}
+                            </p>
+                          );
+                        }
+                        return null;
+                      })()}
                     </div>
                   </div>
                   <div className="text-right">

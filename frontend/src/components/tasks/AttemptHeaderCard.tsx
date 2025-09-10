@@ -2,6 +2,7 @@ import { Card } from '../ui/card';
 import { Button } from '../ui/button';
 import type { TaskAttempt, TaskWithAttemptStatus } from 'shared/types';
 import { useDiffSummary } from '@/hooks/useDiffSummary';
+import { useAttemptExecution } from '@/hooks/useAttemptExecution';
 
 interface AttemptHeaderCardProps {
   attemptNumber: number;
@@ -23,6 +24,37 @@ export function AttemptHeaderCard({
   const { fileCount, added, deleted } = useDiffSummary(
     selectedAttempt?.id ?? null
   );
+  const { attemptData } = useAttemptExecution(selectedAttempt?.id ?? undefined);
+
+  const agentLabel = (() => {
+    const fallback = selectedAttempt?.executor || '';
+    const procs = attemptData.processes || [];
+    // Find latest coding-agent process
+    const cg = [...procs]
+      .reverse()
+      .find((p) => p.run_reason === 'codingagent' && !p.dropped);
+    if (!cg) return fallback;
+    const t: any = cg.executor_action?.typ || {};
+    const exec: string = t?.executor_profile_id?.executor || fallback;
+    let setting: string | null = null;
+    if (exec === 'CODEX') {
+      const m = (t.codex_model_override || '') as string;
+      setting = m
+        ? m === 'gpt-5'
+          ? 'high'
+          : m === 'codex-mini-latest'
+            ? 'medium'
+            : m === 'o4-mini'
+              ? 'low'
+              : m
+        : 'default';
+    } else if (exec === 'CLAUDE_CODE') {
+      const m = (t.claude_model_override || '') as string;
+      setting = m ? m : 'default';
+    }
+    const execName = exec === 'CLAUDE_CODE' ? 'Claude Code' : exec;
+    return setting ? `${execName}(${setting})` : execName;
+  })();
 
   return (
     <Card className="border-b border-dashed bg-background flex items-center text-sm">
@@ -33,7 +65,7 @@ export function AttemptHeaderCard({
         </p>
         <p>
           <span className="text-secondary-foreground">Agent &middot; </span>
-          {selectedAttempt?.executor}
+          {agentLabel}
         </p>
         {selectedAttempt?.branch && (
           <p className="max-w-30">

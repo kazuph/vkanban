@@ -46,7 +46,7 @@ export function TaskFollowUpSection({
     processes,
   } = useAttemptExecution(selectedAttemptId, task.id);
   const { data: branchStatus } = useBranchStatus(selectedAttemptId);
-  const { profiles } = useUserSystem();
+  const { profiles, system } = useUserSystem();
 
   // Inline defaultFollowUpVariant logic
   const defaultFollowUpVariant = useMemo(() => {
@@ -88,6 +88,10 @@ export function TaskFollowUpSection({
   const [selectedVariant, setSelectedVariant] = useState<string | null>(
     defaultFollowUpVariant
   );
+  // Base executor selection for per-message switching
+  const [selectedBaseExecutor, setSelectedBaseExecutor] = useState<string | null>(
+    selectedAttemptProfile || system.config?.executor_profile?.executor || null
+  );
   const [isAnimating, setIsAnimating] = useState(false);
   const variantButtonRef = useRef<HTMLButtonElement>(null);
   const [showImageUpload, setShowImageUpload] = useState(false);
@@ -95,9 +99,14 @@ export function TaskFollowUpSection({
   const [newlyUploadedImageIds, setNewlyUploadedImageIds] = useState<string[]>(
     []
   );
+  // Codex-only: reasoning/model selector
+  const [codexReasoning, setCodexReasoning] = useState<
+    'default' | 'low' | 'medium' | 'high' | 'custom'
+  >('high');
+  const [codexCustomModel, setCodexCustomModel] = useState<string>('');
+  const [claudeModel, setClaudeModel] = useState<'default' | 'sonnet' | 'opus'>('default');
 
-  // Get the profile from the attempt data
-  const selectedProfile = selectedAttemptProfile;
+  // NOTE: base executor now selected via selectedBaseExecutor
 
   const canSendFollowUp = useMemo(() => {
     if (
@@ -126,9 +135,9 @@ export function TaskFollowUpSection({
     branchStatus?.merges,
   ]);
   const currentProfile = useMemo(() => {
-    if (!selectedProfile || !profiles) return null;
-    return profiles?.[selectedProfile];
-  }, [selectedProfile, profiles]);
+    if (!selectedBaseExecutor || !profiles) return null;
+    return profiles?.[selectedBaseExecutor];
+  }, [selectedBaseExecutor, profiles]);
 
   // Update selectedVariant when defaultFollowUpVariant changes
   useEffect(() => {
@@ -171,10 +180,32 @@ export function TaskFollowUpSection({
             ? images.map((img) => img.id)
             : null;
 
+      const codex_model_override =
+        selectedBaseExecutor === 'CODEX'
+          ? codexReasoning === 'custom'
+            ? codexCustomModel.trim() || null
+            : codexReasoning === 'high'
+              ? 'gpt-5'
+              : codexReasoning === 'medium'
+                ? 'codex-mini-latest'
+                : codexReasoning === 'low'
+                  ? 'o4-mini'
+                  : null
+          : null;
+      const claude_model_override =
+        selectedBaseExecutor === 'CLAUDE_CODE'
+          ? (claudeModel === 'default' ? null : claudeModel)
+          : null;
+
       await attemptsApi.followUp(selectedAttemptId, {
         prompt: followUpMessage.trim(),
         variant: selectedVariant,
         image_ids: imageIds,
+        executor_profile_id: selectedBaseExecutor
+          ? ({ executor: selectedBaseExecutor, variant: selectedVariant } as any)
+          : undefined,
+        codex_model_override: (codex_model_override as string | null),
+        claude_model_override: (claude_model_override as string | null),
       });
       setFollowUpMessage('');
       // Clear images and newly uploaded IDs after successful submission
@@ -260,6 +291,42 @@ export function TaskFollowUpSection({
                     />
                   </Button>
 
+                  {/* Executor selector */}
+                  {profiles && (
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          className="w-36 px-2 flex items-center justify-between"
+                          disabled={!canSendFollowUp}
+                        >
+                          <span className="text-xs truncate flex-1 text-left">
+                            {selectedBaseExecutor || 'Select Agent'}
+                          </span>
+                          <ChevronDown className="h-3 w-3 ml-1 flex-shrink-0" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent>
+                        {Object.keys(profiles).map((exec) => (
+                          <DropdownMenuItem
+                            key={exec}
+                            onClick={() => {
+                              setSelectedBaseExecutor(exec);
+                              // Default variant for new executor
+                              const variants = profiles?.[exec] || {};
+                              const first = Object.keys(variants)[0] || null;
+                              setSelectedVariant(first || null);
+                            }}
+                            className={selectedBaseExecutor === exec ? 'bg-accent' : ''}
+                          >
+                            {exec}
+                          </DropdownMenuItem>
+                        ))}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  )}
+
                   {/* Variant selector */}
                   {(() => {
                     const hasVariants =
@@ -323,6 +390,86 @@ export function TaskFollowUpSection({
                     }
                     return null;
                   })()}
+
+                  {/* Codex reasoning selector (visible only when CODEX) */}
+                  {selectedBaseExecutor === 'CODEX' && (
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          className="w-32 px-2 flex items-center justify-between"
+                          disabled={!canSendFollowUp}
+                          title="Codex reasoning/model"
+                        >
+                          <span className="text-xs truncate flex-1 text-left">
+                            {codexReasoning === 'custom'
+                              ? codexCustomModel || 'Custom…'
+                              : codexReasoning}
+                          </span>
+                          <ChevronDown className="h-3 w-3 ml-1 flex-shrink-0" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent>
+                        {(['default', 'low', 'medium', 'high'] as const).map((lvl) => (
+                          <DropdownMenuItem
+                            key={lvl}
+                            onClick={() => setCodexReasoning(lvl)}
+                            className={codexReasoning === lvl ? 'bg-accent' : ''}
+                          >
+                            {lvl}
+                          </DropdownMenuItem>
+                        ))}
+                        <DropdownMenuItem
+                          onClick={() => setCodexReasoning('custom')}
+                          className={codexReasoning === 'custom' ? 'bg-accent' : ''}
+                        >
+                          Custom…
+                        </DropdownMenuItem>
+                        {codexReasoning === 'custom' && (
+                          <div className="px-2 py-2">
+                            <input
+                              className="w-48 text-xs border rounded px-2 py-1 bg-background"
+                              placeholder="model id (e.g., gpt-5)"
+                              value={codexCustomModel}
+                              onChange={(e) => setCodexCustomModel(e.target.value)}
+                            />
+                          </div>
+                        )}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  )}
+
+                  {/* Claude model selector (visible only when CLAUDE_CODE) */}
+                  {selectedBaseExecutor === 'CLAUDE_CODE' && (
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          className="w-28 px-2 flex items-center justify-between"
+                          disabled={!canSendFollowUp}
+                          title="Claude model"
+                        >
+                          <span className="text-xs truncate flex-1 text-left">
+                            {claudeModel}
+                          </span>
+                          <ChevronDown className="h-3 w-3 ml-1 flex-shrink-0" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent>
+                        {(['default', 'sonnet', 'opus'] as const).map((m) => (
+                          <DropdownMenuItem
+                            key={m}
+                            onClick={() => setClaudeModel(m)}
+                            className={claudeModel === m ? 'bg-accent' : ''}
+                          >
+                            {m}
+                          </DropdownMenuItem>
+                        ))}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  )}
                 </div>
                 {isAttemptRunning ? (
                   <Button

@@ -45,6 +45,12 @@ function CreateAttempt({
   const { isAttemptRunning } = useAttemptExecution(selectedAttempt?.id);
   const { createAttempt, isCreating } = useAttemptCreation(task.id);
   const [initialPrompt, setInitialPrompt] = useState('');
+  const [claudeModel, setClaudeModel] = useState<'default' | 'sonnet' | 'opus'>('default');
+  // Codex-only model/effort selector for the first follow-up
+  const [codexReasoning, setCodexReasoning] = useState<
+    'default' | 'low' | 'medium' | 'high' | 'custom'
+  >('high');
+  const [codexCustomModel, setCodexCustomModel] = useState('');
 
   // Create attempt logic
   const actuallyCreateAttempt = useCallback(
@@ -71,11 +77,29 @@ function CreateAttempt({
       // Send the initial prompt immediately as the first follow-up
       const prompt = initialPrompt.trim();
       if (prompt) {
+        const isCodex = (profile as any).executor === 'CODEX';
+        const codex_model_override = isCodex
+          ? codexReasoning === 'custom'
+            ? codexCustomModel.trim() || null
+            : codexReasoning === 'high'
+              ? 'gpt-5'
+              : codexReasoning === 'medium'
+                ? 'codex-mini-latest'
+                : codexReasoning === 'low'
+                  ? 'o4-mini'
+                  : null
+          : null;
         try {
+          const isClaude = (profile as any).executor === 'CLAUDE_CODE';
           await attemptsApi.followUp(newAttempt.id, {
             prompt,
             variant: (profile as any).variant ?? null,
             image_ids: null,
+            executor_profile_id: profile as any,
+            codex_model_override: (codex_model_override as string | null),
+            claude_model_override: isClaude
+              ? (claudeModel === 'default' ? null : (claudeModel as string))
+              : null,
           });
         } catch (e) {
           // Non-fatal: attempt is created; surface error via console
@@ -308,6 +332,42 @@ function CreateAttempt({
               </label>
               <span className="text-[10px] text-destructive">(required)</span>
             </div>
+            {(selectedProfile?.executor as any) === 'CODEX' && (
+              <div className="flex gap-2 mb-2">
+                <select
+                  className="w-40 text-xs border rounded px-2 py-1 bg-background"
+                  value={codexReasoning}
+                  onChange={(e) => setCodexReasoning(e.target.value as any)}
+                >
+                  <option value="default">default</option>
+                  <option value="low">low</option>
+                  <option value="medium">medium</option>
+                  <option value="high">high</option>
+                  <option value="custom">custom…</option>
+                </select>
+                {codexReasoning === 'custom' && (
+                  <input
+                    className="flex-1 text-xs border rounded px-2 py-1 bg-background"
+                    placeholder="model id (e.g., gpt-5)"
+                    value={codexCustomModel}
+                    onChange={(e) => setCodexCustomModel(e.target.value)}
+                  />
+                )}
+              </div>
+            )}
+            {(selectedProfile?.executor as any) === 'CLAUDE_CODE' && (
+              <div className="flex gap-2 mb-2">
+                <select
+                  className="w-40 text-xs border rounded px-2 py-1 bg-background"
+                  value={claudeModel}
+                  onChange={(e) => setClaudeModel(e.target.value as any)}
+                >
+                  <option value="default">default</option>
+                  <option value="sonnet">sonnet</option>
+                  <option value="opus">opus</option>
+                </select>
+              </div>
+            )}
             <Textarea
               value={initialPrompt}
               onChange={(e) => setInitialPrompt(e.target.value)}

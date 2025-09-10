@@ -1,3 +1,4 @@
+import React from 'react';
 import MarkdownRenderer from '@/components/ui/markdown-renderer.tsx';
 import {
   ActionType,
@@ -25,6 +26,8 @@ import {
   User,
 } from 'lucide-react';
 import RawLogText from '../common/RawLogText';
+import { attemptsApi } from '@/lib/api';
+import { useParams } from 'react-router-dom';
 
 type Props = {
   entry: NormalizedEntry | ProcessStartPayload;
@@ -303,8 +306,26 @@ const PlanPresentationCard: React.FC<{
   plan: string;
   expansionKey: string;
   repoUrlBase?: string;
-}> = ({ plan, expansionKey }) => {
+  attemptId?: string;
+}> = ({ plan, expansionKey, attemptId }) => {
   const [expanded, toggle] = useExpandable(`plan-entry:${expansionKey}`, true);
+  const [busy, setBusy] = React.useState(false);
+  const onExport = async () => {
+    if (!attemptId) return;
+    try {
+      setBusy(true);
+      const title = `Plan for attempt ${attemptId} @ ${new Date().toISOString()}`;
+      const res = await attemptsApi.exportPlanToIssue(attemptId, {
+        title,
+        plan_markdown: plan,
+      });
+      window.open(res.url, '_blank');
+    } catch (e: any) {
+      alert(`Failed to export plan to GitHub issue: ${e?.message || e}`);
+    } finally {
+      setBusy(false);
+    }
+  };
 
   return (
     <div className="inline-block w-full">
@@ -321,6 +342,19 @@ const PlanPresentationCard: React.FC<{
             <span className="font-semibold">Plan</span>
           </span>
           <div className="ml-auto flex items-center gap-2">
+            {attemptId && (
+              <button
+                className="text-xs underline hover:no-underline disabled:opacity-50"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onExport();
+                }}
+                disabled={busy}
+                title="Export plan as GitHub issue"
+              >
+                {busy ? 'Exporting…' : 'Export to Issue'}
+              </button>
+            )}
             <ExpandChevron
               expanded={expanded}
               onClick={toggle}
@@ -483,6 +517,7 @@ const ToolCallCard: React.FC<{
  *******************/
 
 function DisplayConversationEntry({ entry, expansionKey, repoUrlBase }: Props) {
+  const { attemptId } = useParams();
   const isNormalizedEntry = (
     entry: NormalizedEntry | ProcessStartPayload
   ): entry is NormalizedEntry => 'entry_type' in entry;
@@ -539,6 +574,7 @@ function DisplayConversationEntry({ entry, expansionKey, repoUrlBase }: Props) {
           plan={entryType.action_type.plan}
           expansionKey={expansionKey}
           repoUrlBase={repoUrlBase}
+          attemptId={attemptId}
         />
       ) : isToolUse ? (
         <ToolCallCard

@@ -380,6 +380,20 @@ export const attemptsApi = {
     return handleApiResponse<void>(response);
   },
 
+  exportPlanToIssue: async (
+    attemptId: string,
+    data: { title: string; plan_markdown: string }
+  ): Promise<{ url: string; number: number }> => {
+    const response = await makeRequest(
+      `/api/task-attempts/${attemptId}/plan-to-issue`,
+      {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }
+    );
+    return handleApiResponse<{ url: string; number: number }>(response);
+  },
+
   deleteFile: async (
     attemptId: string,
     fileToDelete: string
