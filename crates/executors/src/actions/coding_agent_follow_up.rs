@@ -19,6 +19,15 @@ pub struct CodingAgentFollowUpRequest {
     #[serde(alias = "profile_variant_label")]
     // Backwards compatability with ProfileVariantIds, esp stored in DB under ExecutorAction
     pub executor_profile_id: ExecutorProfileId,
+    /// Optional override for Codex model (maps to --model)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub codex_model_override: Option<String>,
+    /// Optional override for Claude model ("sonnet" | "opus")
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub claude_model_override: Option<String>,
+    /// If true, force a fresh session instead of attempting resume
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub force_new_session: Option<bool>,
 }
 
 impl CodingAgentFollowUpRequest {
@@ -38,8 +47,41 @@ impl Executable for CodingAgentFollowUpRequest {
                 executor_profile_id.to_string(),
             ))?;
 
-        agent
-            .spawn_follow_up(current_dir, &self.prompt, &self.session_id)
-            .await
+        let force_new = self.force_new_session.unwrap_or(false);
+        match agent {
+            crate::executors::CodingAgent::Codex(mut cfg) => {
+                if let Some(model) = self.codex_model_override.clone() {
+                    cfg.model = Some(model);
+                }
+                if force_new {
+                    cfg.spawn(current_dir, &self.prompt).await
+                } else {
+                    cfg
+                        .spawn_follow_up(current_dir, &self.prompt, &self.session_id)
+                        .await
+                }
+            }
+            crate::executors::CodingAgent::ClaudeCode(mut cfg) => {
+                if let Some(model) = self.claude_model_override.clone() {
+                    cfg.model = Some(model);
+                }
+                if force_new {
+                    cfg.spawn(current_dir, &self.prompt).await
+                } else {
+                    cfg
+                        .spawn_follow_up(current_dir, &self.prompt, &self.session_id)
+                        .await
+                }
+            }
+            other => {
+                if force_new {
+                    other.spawn(current_dir, &self.prompt).await
+                } else {
+                    other
+                        .spawn_follow_up(current_dir, &self.prompt, &self.session_id)
+                        .await
+                }
+            }
+        }
     }
 }

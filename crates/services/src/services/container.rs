@@ -576,6 +576,8 @@ pub trait ContainerService {
                     ExecutorActionType::CodingAgentInitialRequest(CodingAgentInitialRequest {
                         prompt,
                         executor_profile_id: executor_profile_id.clone(),
+                        codex_model_override: None,
+                        claude_model_override: None,
                     }),
                     cleanup_action,
                 ))),
@@ -592,6 +594,8 @@ pub trait ContainerService {
                 ExecutorActionType::CodingAgentInitialRequest(CodingAgentInitialRequest {
                     prompt,
                     executor_profile_id: executor_profile_id.clone(),
+                    codex_model_override: None,
+                    claude_model_override: None,
                 }),
                 cleanup_action,
             );

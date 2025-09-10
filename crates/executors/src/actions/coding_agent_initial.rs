@@ -18,6 +18,12 @@ pub struct CodingAgentInitialRequest {
     #[serde(alias = "profile_variant_label")]
     // Backwards compatability with ProfileVariantIds, esp stored in DB under ExecutorAction
     pub executor_profile_id: ExecutorProfileId,
+    /// Optional override for Codex model (maps to --model) during initial run
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub codex_model_override: Option<String>,
+    /// Optional override for Claude model ("sonnet" | "opus") during initial run
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub claude_model_override: Option<String>,
 }
 
 #[async_trait]
@@ -29,7 +35,20 @@ impl Executable for CodingAgentInitialRequest {
             .ok_or(ExecutorError::UnknownExecutorType(
                 executor_profile_id.to_string(),
             ))?;
-
-        agent.spawn(current_dir, &self.prompt).await
+        match agent {
+            crate::executors::CodingAgent::Codex(mut cfg) => {
+                if let Some(model) = self.codex_model_override.clone() {
+                    cfg.model = Some(model);
+                }
+                cfg.spawn(current_dir, &self.prompt).await
+            }
+            crate::executors::CodingAgent::ClaudeCode(mut cfg) => {
+                if let Some(model) = self.claude_model_override.clone() {
+                    cfg.model = Some(model);
+                }
+                cfg.spawn(current_dir, &self.prompt).await
+            }
+            other => other.spawn(current_dir, &self.prompt).await,
+        }
     }
 }
