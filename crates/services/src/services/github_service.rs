@@ -338,6 +338,82 @@ impl GitHubService {
         Ok(pr_info)
     }
 
+    /// Create an issue; if `body` exceeds safe limits, split into initial body + follow-up comments.
+    /// Returns issue URL and number.
+    pub async fn create_issue(
+        &self,
+        repo_info: &GitHubRepoInfo,
+        title: &str,
+        body: &str,
+    ) -> Result<PullRequestInfo, GitHubServiceError> {
+        // Verify repository access
+        self.client
+            .repos(&repo_info.owner, &repo_info.repo_name)
+            .get()
+            .await
+            .map_err(|e| {
+                GitHubServiceError::Repository(format!(
+                    "Cannot access repository {}/{}: {}",
+                    repo_info.owner, repo_info.repo_name, e
+                ))
+            })?;
+
+        // GitHub's documented body limit for issues is 65536 chars; keep margin
+        const BODY_LIMIT: usize = 60_000;
+
+        let (first, rest) = if body.len() > BODY_LIMIT {
+            let first = body.chars().take(BODY_LIMIT).collect::<String>();
+            let rest = body.chars().skip(BODY_LIMIT).collect::<String>();
+            (first, Some(rest))
+        } else {
+            (body.to_string(), None)
+        };
+
+        // Create the issue
+        let issue = self
+            .client
+            .issues(&repo_info.owner, &repo_info.repo_name)
+            .create(title)
+            .body(&first)
+            .send()
+            .await
+            .map_err(|e| GitHubServiceError::Repository(format!(
+                "Failed to create issue: {}",
+                e
+            )))?;
+
+        // Post overflow as comments in chunks if needed
+        if let Some(overflow) = rest {
+            // Split overflow into chunks to be safe
+            let mut start = 0usize;
+            let chars: Vec<char> = overflow.chars().collect();
+            while start < chars.len() {
+                let end = (start + BODY_LIMIT).min(chars.len());
+                let chunk: String = chars[start..end].iter().collect();
+                self.client
+                    .issues(&repo_info.owner, &repo_info.repo_name)
+                    .create_comment(issue.number, chunk)
+                    .await
+                    .map_err(|e| GitHubServiceError::Repository(format!(
+                        "Failed to add overflow comment: {}",
+                        e
+                    )))?;
+                start = end;
+            }
+        }
+
+        // Reuse PullRequestInfo struct for URL/number transport
+        let url = issue.html_url.to_string();
+        let pr_like = PullRequestInfo {
+            number: issue.number as i64,
+            url,
+            status: MergeStatus::Open,
+            merged_at: None,
+            merge_commit_sha: None,
+        };
+        Ok(pr_like)
+    }
+
     /// List repositories for the authenticated user with pagination
     #[cfg(feature = "cloud")]
     pub async fn list_repositories(

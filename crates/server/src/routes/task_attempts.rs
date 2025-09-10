@@ -43,6 +43,82 @@ use uuid::Uuid;
 
 use crate::{DeploymentImpl, error::ApiError, middleware::load_task_attempt_middleware};
 
+// Helper: Transform stored JSONL logs into a compact conversation text.
+fn build_conversation_context_from_logs(
+    logs: &db::models::execution_process_logs::ExecutionProcessLogs,
+) -> Result<String, serde_json::Error> {
+    use utils::log_msg::LogMsg;
+    let mut transcript = String::new();
+    let msgs = logs.parse_logs()?;
+    for m in msgs {
+        if let LogMsg::JsonPatch(patch) = m {
+            // Represent Patch as JSON to inspect normalized entries
+            let val = serde_json::to_value(&patch).unwrap_or(serde_json::json!([]));
+            if let Some(arr) = val.as_array() {
+                for op in arr {
+                    if let Some(value) = op.get("value") {
+                        // Expect { type: "NORMALIZED_ENTRY" | "STDOUT" |..., content: {...} }
+                        let typ = value.get("type").and_then(|t| t.as_str()).unwrap_or("");
+                        if typ == "NORMALIZED_ENTRY" {
+                            if let Some(content) = value.get("content") {
+                                let entry_type = content
+                                    .get("entry_type")
+                                    .and_then(|et| et.get("type"))
+                                    .and_then(|s| s.as_str())
+                                    .unwrap_or("");
+                                let text = content
+                                    .get("content")
+                                    .and_then(|c| c.as_str())
+                                    .unwrap_or("")
+                                    .trim();
+                                match entry_type {
+                                    "user_message" => {
+                                        if !text.is_empty() {
+                                            transcript.push_str("User: ");
+                                            transcript.push_str(text);
+                                            transcript.push('\n');
+                                        }
+                                    }
+                                    "assistant_message" => {
+                                        if !text.is_empty() {
+                                            transcript.push_str("Assistant: ");
+                                            transcript.push_str(text);
+                                            transcript.push('\n');
+                                        }
+                                    }
+                                    "tool_use" => {
+                                        if let Some(action) = content
+                                            .get("entry_type")
+                                            .and_then(|et| et.get("action_type"))
+                                            .and_then(|a| a.get("action"))
+                                            .and_then(|s| s.as_str())
+                                        {
+                                            if action == "plan_presentation" {
+                                                if let Some(plan) = content
+                                                    .get("entry_type")
+                                                    .and_then(|et| et.get("action_type"))
+                                                    .and_then(|a| a.get("plan"))
+                                                    .and_then(|p| p.as_str())
+                                                {
+                                                    transcript.push_str("Plan:\n");
+                                                    transcript.push_str(plan.trim());
+                                                    transcript.push('\n');
+                                                }
+                                            }
+                                        }
+                                    }
+                                    _ => {}
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    Ok(transcript)
+}
+
 #[derive(Debug, Deserialize, Serialize, TS)]
 pub struct RebaseTaskAttemptRequest {
     pub new_base_branch: Option<String>,
@@ -160,6 +236,13 @@ pub struct CreateFollowUpAttempt {
     pub prompt: String,
     pub variant: Option<String>,
     pub image_ids: Option<Vec<Uuid>>,
+    /// Optional: fully specify the executor to use for this follow-up
+    /// If provided, this takes precedence over `variant`.
+    pub executor_profile_id: Option<ExecutorProfileId>,
+    /// Optional Codex model override (e.g., "gpt-5", "codex-mini-latest")
+    pub codex_model_override: Option<String>,
+    /// Optional Claude model override ("sonnet" | "opus")
+    pub claude_model_override: Option<String>,
 }
 
 pub async fn follow_up(
@@ -211,9 +294,13 @@ pub async fn follow_up(
         ))),
     }?;
 
-    let executor_profile_id = ExecutorProfileId {
-        executor: initial_executor_profile_id.executor,
-        variant: payload.variant,
+    let executor_profile_id = if let Some(overridden) = payload.executor_profile_id.clone() {
+        overridden
+    } else {
+        ExecutorProfileId {
+            executor: initial_executor_profile_id.executor,
+            variant: payload.variant,
+        }
     };
 
     // Get parent task
@@ -261,10 +348,40 @@ pub async fn follow_up(
         ))
     });
 
+    // Determine cross-executor resume compatibility
+    let is_executor_changed = initial_executor_profile_id.executor != executor_profile_id.executor;
+    let mut prepared_prompt = prompt;
+
+    // If switching executors, prepend prior conversation as context and force new session
+    let mut force_new_session = false;
+    if is_executor_changed {
+        force_new_session = true;
+        // Attempt to reconstruct a concise conversation from the latest process logs
+        if let Ok(Some(prev_logs)) = db::models::execution_process_logs::ExecutionProcessLogs::find_by_execution_id(
+            &deployment.db().pool,
+            latest_execution_process.id,
+        )
+        .await
+        {
+            if let Ok(history) = build_conversation_context_from_logs(&prev_logs) {
+                let header = "Context from previous agent (shortened):\n";
+                let sep = "\n\n---\n\n";
+                let mut ctx = history;
+                if ctx.len() > 8000 {
+                    ctx.truncate(8000);
+                }
+                prepared_prompt = format!("{header}{ctx}{sep}{prepared_prompt}");
+            }
+        }
+    }
+
     let follow_up_request = CodingAgentFollowUpRequest {
-        prompt,
+        prompt: prepared_prompt,
         session_id,
         executor_profile_id,
+        codex_model_override: payload.codex_model_override,
+        claude_model_override: payload.claude_model_override,
+        force_new_session: Some(force_new_session),
     };
 
     let follow_up_action = ExecutorAction::new(
@@ -282,6 +399,80 @@ pub async fn follow_up(
         .await?;
 
     Ok(ResponseJson(ApiResponse::success(execution_process)))
+}
+
+#[derive(Debug, Deserialize, Serialize, TS)]
+pub struct ExportPlanToIssueRequest {
+    pub title: String,
+    /// Plan content in Markdown. The server will split into issue + comments if too long.
+    pub plan_markdown: String,
+}
+
+#[derive(Debug, Serialize, TS)]
+pub struct ExportPlanToIssueResponse {
+    pub url: String,
+    pub number: i64,
+}
+
+/// Export a provided plan markdown into a GitHub issue for the task's repository
+pub async fn export_plan_to_issue(
+    Extension(task_attempt): Extension<TaskAttempt>,
+    State(deployment): State<DeploymentImpl>,
+    Json(payload): Json<ExportPlanToIssueRequest>,
+) -> Result<ResponseJson<ApiResponse<ExportPlanToIssueResponse>>, ApiError> {
+    let pool = &deployment.db().pool;
+
+    // Resolve project repo for this attempt
+    let task = task_attempt
+        .parent_task(pool)
+        .await?
+        .ok_or(SqlxError::RowNotFound)?;
+    let project = task
+        .parent_project(pool)
+        .await?
+        .ok_or(SqlxError::RowNotFound)?;
+
+    // Ensure GitHub token configured
+    let github_token = {
+        let cfg = deployment.config().read().await;
+        cfg.github.token()
+    };
+    let github_token = github_token.ok_or_else(|| {
+        ApiError::TaskAttempt(TaskAttemptError::ValidationError(
+            "GitHub token not configured. Please authenticate with GitHub first.".to_string(),
+        ))
+    })?;
+
+    // Derive owner/repo from project's git path
+    let repo_info = deployment
+        .git()
+        .get_github_repo_info(std::path::Path::new(&project.git_repo_path))
+        .map_err(services::services::github_service::GitHubServiceError::from)?;
+
+    // Create GitHub client and create issue (with chunking if needed)
+    let gh = services::services::github_service::GitHubService::new(&github_token)
+        .map_err(ApiError::from)?;
+
+    let issue = gh
+        .create_issue(&repo_info, &payload.title, &payload.plan_markdown)
+        .await
+        .map_err(ApiError::from)?;
+
+    deployment
+        .track_if_analytics_allowed(
+            "github_issue_created",
+            serde_json::json!({
+                "task_id": task.id.to_string(),
+                "project_id": project.id.to_string(),
+                "attempt_id": task_attempt.id.to_string(),
+            }),
+        )
+        .await;
+
+    Ok(ResponseJson(ApiResponse::success(ExportPlanToIssueResponse {
+        url: issue.url,
+        number: issue.number,
+    })))
 }
 
 #[axum::debug_handler]
@@ -1090,6 +1281,7 @@ pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
     let task_attempt_id_router = Router::new()
         .route("/", get(get_task_attempt))
         .route("/follow-up", post(follow_up))
+        .route("/plan-to-issue", post(export_plan_to_issue))
         .route("/restore", post(restore_task_attempt))
         .route("/commit-info", get(get_commit_info))
         .route("/commit-compare", get(compare_commit_to_head))
