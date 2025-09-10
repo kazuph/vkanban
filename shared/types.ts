@@ -8,13 +8,13 @@ export type DirectoryEntry = { name: string, path: string, is_directory: boolean
 
 export type DirectoryListResponse = { entries: Array<DirectoryEntry>, current_path: string, };
 
-export type Project = { id: string, name: string, git_repo_path: string, setup_script: string | null, dev_script: string | null, cleanup_script: string | null, copy_files: string | null, workspace_dirs: string | null, created_at: Date, updated_at: Date, };
+export type Project = { id: string, name: string, git_repo_path: string, setup_script: string | null, dev_script: string | null, cleanup_script: string | null, copy_files: string | null, workspace_dirs: string | null, append_prompt: string | null, created_at: Date, updated_at: Date, };
 
-export type ProjectWithBranch = { id: string, name: string, git_repo_path: string, setup_script: string | null, dev_script: string | null, cleanup_script: string | null, copy_files: string | null, workspace_dirs: string | null, current_branch: string | null, created_at: Date, updated_at: Date, };
+export type ProjectWithBranch = { id: string, name: string, git_repo_path: string, setup_script: string | null, dev_script: string | null, cleanup_script: string | null, copy_files: string | null, workspace_dirs: string | null, append_prompt: string | null, current_branch: string | null, created_at: Date, updated_at: Date, };
 
-export type CreateProject = { name: string, git_repo_path: string, use_existing_repo: boolean, setup_script: string | null, dev_script: string | null, cleanup_script: string | null, copy_files: string | null, workspace_dirs: string | null, };
+export type CreateProject = { name: string, git_repo_path: string, use_existing_repo: boolean, setup_script: string | null, dev_script: string | null, cleanup_script: string | null, copy_files: string | null, workspace_dirs: string | null, append_prompt: string | null, };
 
-export type UpdateProject = { name: string | null, git_repo_path: string | null, setup_script: string | null, dev_script: string | null, cleanup_script: string | null, copy_files: string | null, workspace_dirs: string | null, };
+export type UpdateProject = { name: string | null, git_repo_path: string | null, setup_script: string | null, dev_script: string | null, cleanup_script: string | null, copy_files: string | null, workspace_dirs: string | null, append_prompt: string | null, };
 
 export type SearchResult = { path: string, is_file: boolean, match_type: SearchMatchType, };
 
@@ -74,7 +74,20 @@ export type UpdateMcpServersBody = { servers: { [key in string]?: JsonValue }, }
 
 export type GetMcpServerResponse = { mcp_config: McpConfig, config_path: string, };
 
-export type CreateFollowUpAttempt = { prompt: string, variant: string | null, image_ids: Array<string> | null, };
+export type CreateFollowUpAttempt = { prompt: string, variant: string | null, image_ids: Array<string> | null, 
+/**
+ * Optional: fully specify the executor to use for this follow-up
+ * If provided, this takes precedence over `variant`.
+ */
+executor_profile_id: ExecutorProfileId | null, 
+/**
+ * Optional Codex model override (e.g., "gpt-5", "codex-mini-latest")
+ */
+codex_model_override: string | null, 
+/**
+ * Optional Claude model override ("sonnet" | "opus")
+ */
+claude_model_override: string | null, };
 
 export type CreateGitHubPrRequest = { title: string, body: string | null, base_branch: string | null, };
 
@@ -136,7 +149,7 @@ export type ExecutorConfig = { [key in string]?: { "CLAUDE_CODE": ClaudeCode } |
 
 export type BaseAgentCapability = "RESTORE_CHECKPOINT";
 
-export type ClaudeCode = { append_prompt: AppendPrompt, claude_code_router?: boolean | null, plan?: boolean | null, dangerously_skip_permissions?: boolean | null, base_command_override?: string | null, additional_params?: Array<string> | null, };
+export type ClaudeCode = { append_prompt: AppendPrompt, claude_code_router?: boolean | null, plan?: boolean | null, dangerously_skip_permissions?: boolean | null, model?: string | null, base_command_override?: string | null, additional_params?: Array<string> | null, };
 
 export type Gemini = { append_prompt: AppendPrompt, model: GeminiModel, yolo?: boolean | null, base_command_override?: string | null, additional_params?: Array<string> | null, };
 
@@ -162,13 +175,33 @@ export type CodingAgentInitialRequest = { prompt: string,
 /**
  * Executor profile specification
  */
-executor_profile_id: ExecutorProfileId, };
+executor_profile_id: ExecutorProfileId, 
+/**
+ * Optional override for Codex model (maps to --model) during initial run
+ */
+codex_model_override: string | null, 
+/**
+ * Optional override for Claude model ("sonnet" | "opus") during initial run
+ */
+claude_model_override: string | null, };
 
 export type CodingAgentFollowUpRequest = { prompt: string, session_id: string, 
 /**
  * Executor profile specification
  */
-executor_profile_id: ExecutorProfileId, };
+executor_profile_id: ExecutorProfileId, 
+/**
+ * Optional override for Codex model (maps to --model)
+ */
+codex_model_override: string | null, 
+/**
+ * Optional override for Claude model ("sonnet" | "opus")
+ */
+claude_model_override: string | null, 
+/**
+ * If true, force a fresh session instead of attempting resume
+ */
+force_new_session: boolean | null, };
 
 export type CreateTaskAttemptBody = { task_id: string, 
 /**
@@ -199,6 +232,14 @@ export type CommitInfo = { sha: string, subject: string, };
 export type CommitCompareResult = { head_oid: string, target_oid: string, ahead_from_head: number, behind_from_head: number, is_linear: boolean, };
 
 export type BranchStatus = { commits_behind: number | null, commits_ahead: number | null, has_uncommitted_changes: boolean | null, head_oid: string | null, uncommitted_count: number | null, untracked_count: number | null, base_branch_name: string, remote_commits_behind: number | null, remote_commits_ahead: number | null, merges: Array<Merge>, };
+
+export type ExportPlanToIssueRequest = { title: string, 
+/**
+ * Plan content in Markdown. The server will split into issue + comments if too long.
+ */
+plan_markdown: string, };
+
+export type ExportPlanToIssueResponse = { url: string, number: bigint, };
 
 export type TaskAttempt = { id: string, task_id: string, container_ref: string | null, branch: string | null, base_branch: string, executor: string, worktree_deleted: boolean, setup_completed_at: string | null, created_at: string, updated_at: string, };
 
