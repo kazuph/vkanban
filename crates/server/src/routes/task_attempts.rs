@@ -977,6 +977,8 @@ pub struct BranchStatus {
     pub remote_commits_behind: Option<usize>,
     pub remote_commits_ahead: Option<usize>,
     pub merges: Vec<Merge>,
+    /// Base GitHub repo URL like "https://github.com/owner/repo" when detectable
+    pub repo_url_base: Option<String>,
 }
 
 pub async fn get_task_attempt_branch_status(
@@ -1049,7 +1051,20 @@ pub async fn get_task_attempt_branch_status(
         remote_commits_behind: None,
         merges,
         base_branch_name: task_attempt.base_branch.clone(),
+        repo_url_base: None,
     };
+    // Try to derive GitHub repo base URL from git remote
+    if branch_status.repo_url_base.is_none() {
+        if let Ok(info) = deployment
+            .git()
+            .get_github_repo_info(std::path::Path::new(&ctx.project.git_repo_path))
+        {
+            branch_status.repo_url_base = Some(format!(
+                "https://github.com/{}/{}",
+                info.owner, info.repo_name
+            ));
+        }
+    }
     let has_open_pr = branch_status.merges.first().is_some_and(|m| {
         matches!(
             m,

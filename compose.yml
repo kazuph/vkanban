@@ -7,6 +7,9 @@ services:
         NODE_VERSION: 20
         RUST_VERSION: 1.79
         PNPM_VERSION: 9
+        # Provide GitHub base URL to the frontend build so "#123" can link correctly
+        # Example: https://github.com/<org>/<repo>
+        VITE_REPO_BASE: https://github.com/${REPO_CANON:-kazuph/vkanban}
     image: vkanban:dev
     user: "${UID:-1000}:${GID:-1000}"
     ports:

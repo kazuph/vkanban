@@ -2,13 +2,14 @@ import { memo, useMemo } from 'react';
 import { hasAnsi, FancyAnsi } from 'fancy-ansi';
 import { clsx } from 'clsx';
 
-// Allow overriding default repo in build-time env (Vite)
-// Fallback to this repository if not set.
-const DEFAULT_REPO_BASE =
-  (typeof import.meta !== 'undefined' &&
-    (import.meta as any).env &&
-    (import.meta as any).env.VITE_REPO_BASE) ||
-  'https://github.com/kazuph/vkanban';
+// Allow overriding default repo in build-time env (Vite).
+// If not provided, remain undefined to avoid mis-linking.
+const DEFAULT_REPO_BASE: string | undefined =
+  typeof import.meta !== 'undefined' &&
+  (import.meta as any).env &&
+  (import.meta as any).env.VITE_REPO_BASE
+    ? (import.meta as any).env.VITE_REPO_BASE
+    : undefined;
 
 interface RawLogTextProps {
   content: string;
@@ -63,9 +64,14 @@ function linkifyHtml(html: string, repoUrlBase?: string): string {
           if (m) {
             effectiveRepoBase = `https://github.com/${m[1]}/${m[2]}`;
           }
-          // 2) Fallback to build-time default repo base (fork uses kazuph/vkanban)
+          // 2) Optional fallback: build-time default repo base (can be overridden by VITE_REPO_BASE)
+          // Only use this if explicitly configured; avoid linking to the wrong repo accidentally.
           if (!effectiveRepoBase) {
-            effectiveRepoBase = DEFAULT_REPO_BASE;
+            const configured = DEFAULT_REPO_BASE;
+            // If someone left the default placeholder, ignore it to prevent mislinks
+            if (!configured.endsWith('/vkanban')) {
+              effectiveRepoBase = configured;
+            }
           }
         }
         let match: RegExpExecArray | null;
@@ -94,7 +100,8 @@ function linkifyHtml(html: string, repoUrlBase?: string): string {
         if (prefix) container.appendChild(doc.createTextNode(prefix));
 
         const a = doc.createElement('a');
-        a.setAttribute('href', `${effectiveRepoBase}/pull/${num}`);
+        // Use /issues to cover both Issues and PRs (#123)
+        a.setAttribute('href', `${effectiveRepoBase}/issues/${num}`);
         a.setAttribute('target', '_blank');
         a.setAttribute('rel', 'noopener noreferrer');
         a.setAttribute('class', 'underline text-[hsl(var(--info))] hover:opacity-90 break-words');

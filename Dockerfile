@@ -1,6 +1,10 @@
 # Build stage
 FROM node:24-alpine AS builder
 
+# Optional: inject base GitHub repo URL for linkifying #123 (used by Vite at build time)
+ARG VITE_REPO_BASE
+ENV VITE_REPO_BASE=${VITE_REPO_BASE}
+
 # Install build dependencies
 RUN apk add --no-cache \
     curl \

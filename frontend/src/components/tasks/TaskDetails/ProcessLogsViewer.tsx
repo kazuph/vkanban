@@ -23,6 +23,8 @@ export default function ProcessLogsViewer({ processId, attemptId }: ProcessLogsV
   const { logs, error } = useLogStream(processId);
   const { data: branchStatus } = useBranchStatus(attemptId);
   const repoUrlBase = useMemo(() => {
+    const fromServer = (branchStatus as any)?.repo_url_base as string | undefined;
+    if (fromServer) return fromServer;
     const pr = branchStatus?.merges?.find((m) => m.type === 'pr');
     const url = pr?.pr_info?.url || null;
     if (!url) return undefined;
@@ -32,7 +34,7 @@ export default function ProcessLogsViewer({ processId, attemptId }: ProcessLogsV
       if (parts.length >= 2) return `${u.origin}/${parts[0]}/${parts[1]}`;
     } catch {}
     return undefined;
-  }, [branchStatus?.merges]);
+  }, [branchStatus]);
 
   // 1) Initial jump to bottom once data appears.
   useEffect(() => {

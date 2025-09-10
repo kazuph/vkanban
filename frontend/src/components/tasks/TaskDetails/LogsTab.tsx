@@ -301,7 +301,11 @@ function LogsTab({ selectedAttempt }: Props) {
   }, [filteredProcesses, entries]);
 
   const repoUrlBase = useMemo(() => {
-    // Derive repo base URL from any PR URL present in branch status
+    // 1) Prefer server-provided base (derived from git remote)
+    const fromServer = (branchStatus as any)?.repo_url_base as string | undefined;
+    if (fromServer) return fromServer;
+
+    // 2) Fallback: derive from any PR URL present in branch status
     // e.g., https://github.com/owner/repo/pull/123 -> https://github.com/owner/repo
     const pr = branchStatus?.merges?.find((m) => m.type === 'pr');
     const url = pr?.pr_info?.url || null;
@@ -309,13 +313,10 @@ function LogsTab({ selectedAttempt }: Props) {
     try {
       const u = new URL(url);
       const parts = u.pathname.split('/').filter(Boolean);
-      // Expect: [owner, repo, 'pull', '123']
-      if (parts.length >= 2) {
-        return `${u.origin}/${parts[0]}/${parts[1]}`;
-      }
+      if (parts.length >= 2) return `${u.origin}/${parts[0]}/${parts[1]}`;
     } catch {}
     return undefined;
-  }, [branchStatus?.merges]);
+  }, [branchStatus]);
 
   const itemContent = useCallback(
     (

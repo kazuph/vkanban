@@ -2,12 +2,13 @@ import ReactMarkdown, { Components } from 'react-markdown';
 import { memo, useMemo } from 'react';
 import remarkGfm from 'remark-gfm';
 
-// Allow overriding default repo via Vite env
-const DEFAULT_REPO_BASE =
-  (typeof import.meta !== 'undefined' &&
-    (import.meta as any).env &&
-    (import.meta as any).env.VITE_REPO_BASE) ||
-  'https://github.com/kazuph/vkanban';
+// Allow overriding default repo via Vite env. If not set, remain undefined
+const DEFAULT_REPO_BASE: string | undefined =
+  typeof import.meta !== 'undefined' &&
+  (import.meta as any).env &&
+  (import.meta as any).env.VITE_REPO_BASE
+    ? (import.meta as any).env.VITE_REPO_BASE
+    : undefined;
 
 interface MarkdownRendererProps {
   content: string;
@@ -22,7 +23,8 @@ function MarkdownRenderer({ content, className = '', repoUrlBase }: MarkdownRend
     if (!base) return content;
     // Replace occurrences of #123 that are not part of a word
     // Note: this is a simple text replacement and may affect code blocks; acceptable for now
-    return content.replace(/(^|[^\w])#(\d+)\b/g, (_m, p1, p2) => `${p1}[#${p2}](${base}/pull/${p2})`);
+    // Use /issues to work for both issues and PRs
+    return content.replace(/(^|[^\w])#(\d+)\b/g, (_m, p1, p2) => `${p1}[#${p2}](${base}/issues/${p2})`);
   }, [content, base]);
   const components: Components = useMemo(
     () => ({
