@@ -59,7 +59,6 @@ const GitHubLoginDialog = NiceModal.create(() => {
               setDeviceState(null);
               setError(null);
               await reloadSystem();
-              modal.resolve();
               break;
             case DevicePollStatus.AUTHORIZATION_PENDING:
               timer = setTimeout(poll, deviceState.interval * 1000);
@@ -127,7 +126,10 @@ const GitHubLoginDialog = NiceModal.create(() => {
     <Dialog
       open={modal.visible}
       onOpenChange={(open) => {
-        if (!open) modal.hide();
+        if (!open) {
+          modal.resolve(isAuthenticated ? true : false);
+          modal.hide();
+        }
       }}
     >
       <DialogContent>
@@ -160,7 +162,13 @@ const GitHubLoginDialog = NiceModal.create(() => {
               </CardContent>
             </Card>
             <DialogFooter>
-              <Button onClick={() => modal.hide()} className="w-full">
+              <Button
+                onClick={() => {
+                  modal.resolve(true);
+                  modal.hide();
+                }}
+                className="w-full"
+              >
                 Close
               </Button>
             </DialogFooter>
@@ -234,7 +242,13 @@ const GitHubLoginDialog = NiceModal.create(() => {
             )}
 
             <DialogFooter>
-              <Button variant="outline" onClick={() => modal.hide()}>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  modal.resolve(false);
+                  modal.hide();
+                }}
+              >
                 Skip
               </Button>
             </DialogFooter>
@@ -287,7 +301,10 @@ const GitHubLoginDialog = NiceModal.create(() => {
             <DialogFooter className="gap-3 flex-col sm:flex-row">
               <Button
                 variant="outline"
-                onClick={() => modal.hide()}
+                onClick={() => {
+                  modal.resolve(false);
+                  modal.hide();
+                }}
                 className="flex-1"
               >
                 Skip
