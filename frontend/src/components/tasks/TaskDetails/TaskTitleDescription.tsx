@@ -1,8 +1,7 @@
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { ChevronDown, ChevronUp } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type { TaskWithAttemptStatus } from 'shared/types';
-import MarkdownRenderer from '@/components/ui/markdown-renderer';
 
 interface TaskTitleDescriptionProps {
   task: TaskWithAttemptStatus;
@@ -10,20 +9,6 @@ interface TaskTitleDescriptionProps {
 
 export function TaskTitleDescription({ task }: TaskTitleDescriptionProps) {
   const [isDescriptionExpanded, setIsDescriptionExpanded] = useState(false);
-  // Prefer explicit repo base via Vite env; fallback to this app's repo
-  const repoUrlBase =
-    (typeof import.meta !== 'undefined' &&
-      (import.meta as any).env &&
-      (import.meta as any).env.VITE_REPO_BASE) ||
-    'https://github.com/monocorp-jp/mimamorin-web';
-
-  const shownDescription = useMemo(() => {
-    if (!task.description) return '';
-    if (isDescriptionExpanded || task.description.length <= 350) {
-      return task.description;
-    }
-    return task.description.slice(0, 350) + '…';
-  }, [task.description, isDescriptionExpanded]);
 
   return (
     <div>
@@ -33,15 +18,15 @@ export function TaskTitleDescription({ task }: TaskTitleDescriptionProps) {
         <div className="flex items-start gap-2 text-sm text-secondary-foreground">
           {task.description ? (
             <div className="flex-1 min-w-0">
-              <MarkdownRenderer
-                content={shownDescription}
-                repoUrlBase={repoUrlBase}
-                className={`break-words ${
+              <p
+                className={`whitespace-pre-wrap break-words ${
                   !isDescriptionExpanded && task.description.length > 350
                     ? 'line-clamp-6'
                     : ''
                 }`}
-              />
+              >
+                {task.description}
+              </p>
               {task.description.length > 150 && (
                 <Button
                   variant="ghost"

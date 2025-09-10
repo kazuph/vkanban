@@ -23,6 +23,20 @@ use uuid::Uuid;
 
 use crate::{DeploymentImpl, error::ApiError, middleware::load_project_middleware};
 
+// Default instructions appended to every prompt when a project does not specify one.
+// Keep this concise and actionable. Leading newlines help separation from the main prompt.
+const DEFAULT_PROJECT_APPEND_PROMPT: &str = r#"
+
+
+[Git/PR Workflow]
+- 作業用ブランチは `vk/<短い-kebab-説明>` で作成（なければ作成）。
+- 実装ごとに小さくコミットし、意図ごとに分割。
+- 初回は `git push -u origin HEAD`、以降の修正も都度 `git push`。
+- PR が無い場合は `gh pr create --fill --web` で作成。既にある場合は `gh pr view --web` でブラウザを開く。
+- タスク完了時は上記コマンドで PR をブラウザで開いた状態にする。
+- 可能ならリンター/テスト/ビルドを実行し、失敗時は修正して再 push。
+"#;
+
 pub async fn get_projects(
     State(deployment): State<DeploymentImpl>,
 ) -> Result<ResponseJson<ApiResponse<Vec<Project>>>, ApiError> {
@@ -143,6 +157,14 @@ pub async fn create_project(
         }
     }
 
+    // Apply default append_prompt when none provided
+    let effective_append_prompt = if let Some(ap) = append_prompt {
+        let trimmed = ap.trim();
+        if trimmed.is_empty() { Some(DEFAULT_PROJECT_APPEND_PROMPT.to_string()) } else { Some(ap) }
+    } else {
+        Some(DEFAULT_PROJECT_APPEND_PROMPT.to_string())
+    };
+
     match Project::create(
         &deployment.db().pool,
         &CreateProject {
@@ -154,7 +176,7 @@ pub async fn create_project(
             cleanup_script,
             copy_files,
             workspace_dirs,
-            append_prompt,
+            append_prompt: effective_append_prompt,
         },
         id,
     )

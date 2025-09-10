@@ -2,30 +2,16 @@ import ReactMarkdown, { Components } from 'react-markdown';
 import { memo, useMemo } from 'react';
 import remarkGfm from 'remark-gfm';
 
-// Allow overriding default repo via Vite env. If not set, remain undefined
-const DEFAULT_REPO_BASE: string | undefined =
-  typeof import.meta !== 'undefined' &&
-  (import.meta as any).env &&
-  (import.meta as any).env.VITE_REPO_BASE
-    ? (import.meta as any).env.VITE_REPO_BASE
-    : undefined;
-
 interface MarkdownRendererProps {
   content: string;
   className?: string;
+  // kept for backward-compat; no longer used for linkification
   repoUrlBase?: string;
 }
 
 function MarkdownRenderer({ content, className = '', repoUrlBase }: MarkdownRendererProps) {
-  // Greedy but practical: linkify "#123" to PR URL when we know (or assume) a repo base
-  const base = repoUrlBase || DEFAULT_REPO_BASE;
-  const contentWithLinks = useMemo(() => {
-    if (!base) return content;
-    // Replace occurrences of #123 that are not part of a word
-    // Note: this is a simple text replacement and may affect code blocks; acceptable for now
-    // Use /issues to work for both issues and PRs
-    return content.replace(/(^|[^\w])#(\d+)\b/g, (_m, p1, p2) => `${p1}[#${p2}](${base}/issues/${p2})`);
-  }, [content, base]);
+  // Note: we intentionally do NOT linkify "#123" to a repo.
+  // Different projects may point to different repositories and a global base is not appropriate.
   const components: Components = useMemo(
     () => ({
       a: ({ href, children, ...props }) => (
@@ -104,7 +90,7 @@ function MarkdownRenderer({ content, className = '', repoUrlBase }: MarkdownRend
   return (
     <div className={className}>
       <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
-        {contentWithLinks}
+        {content}
       </ReactMarkdown>
     </div>
   );

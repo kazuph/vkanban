@@ -2,15 +2,6 @@ import { memo, useMemo } from 'react';
 import { hasAnsi, FancyAnsi } from 'fancy-ansi';
 import { clsx } from 'clsx';
 
-// Allow overriding default repo in build-time env (Vite).
-// If not provided, remain undefined to avoid mis-linking.
-const DEFAULT_REPO_BASE: string | undefined =
-  typeof import.meta !== 'undefined' &&
-  (import.meta as any).env &&
-  (import.meta as any).env.VITE_REPO_BASE
-    ? (import.meta as any).env.VITE_REPO_BASE
-    : undefined;
-
 interface RawLogTextProps {
   content: string;
   channel?: 'stdout' | 'stderr';
@@ -41,8 +32,6 @@ function linkifyHtml(html: string, repoUrlBase?: string): string {
     if (!container) return html;
 
     const urlRegex = /https?:\/\/[^\s<'"`]+/gi;
-    // Match #123 as a separate token (not part of word), capture number
-    const hashRegex = /(^|[^\w])#(\d+)(?=\b)/g;
 
     const traverse = (node: Node) => {
       // Skip linkifying inside existing anchors
@@ -54,66 +43,10 @@ function linkifyHtml(html: string, repoUrlBase?: string): string {
       // Process text nodes
       if (node.nodeType === Node.TEXT_NODE) {
         const text = node.nodeValue ?? '';
-        // If repoUrlBase not provided, try to infer from text (first GitHub URL)
-        let effectiveRepoBase = repoUrlBase;
-        if (!effectiveRepoBase) {
-          // 1) Try to infer from any GitHub URL present in this text node
-          const m = /https?:\/\/github\.com\/([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+)/.exec(
-            text
-          );
-          if (m) {
-            effectiveRepoBase = `https://github.com/${m[1]}/${m[2]}`;
-          }
-          // 2) Optional fallback: build-time default repo base (can be overridden by VITE_REPO_BASE)
-          // Only use this if explicitly configured; avoid linking to the wrong repo accidentally.
-          if (!effectiveRepoBase) {
-            const configured = DEFAULT_REPO_BASE;
-            // If someone left the default placeholder, ignore it to prevent mislinks
-            if (!configured.endsWith('/vkanban')) {
-              effectiveRepoBase = configured;
-            }
-          }
-        }
         let match: RegExpExecArray | null;
         urlRegex.lastIndex = 0;
         const frag = doc.createDocumentFragment();
         let lastIndex = 0;
-
-        const appendHashChunk = (container: DocumentFragment, chunk: string) => {
-          if (!effectiveRepoBase) {
-            container.appendChild(doc.createTextNode(chunk));
-            return;
-          }
-      let innerLast = 0;
-      let innerMatch: RegExpExecArray | null;
-      hashRegex.lastIndex = 0;
-      while ((innerMatch = hashRegex.exec(chunk)) !== null) {
-        const start = innerMatch.index;
-        const end = start + innerMatch[0].length;
-        const prefix = innerMatch[1] || '';
-        const num = innerMatch[2];
-
-        if (start > innerLast) {
-          container.appendChild(doc.createTextNode(chunk.slice(innerLast, start)));
-        }
-
-        if (prefix) container.appendChild(doc.createTextNode(prefix));
-
-        const a = doc.createElement('a');
-        // Use /issues to cover both Issues and PRs (#123)
-        a.setAttribute('href', `${effectiveRepoBase}/issues/${num}`);
-        a.setAttribute('target', '_blank');
-        a.setAttribute('rel', 'noopener noreferrer');
-        a.setAttribute('class', 'underline text-[hsl(var(--info))] hover:opacity-90 break-words');
-        a.textContent = `#${num}`;
-        container.appendChild(a);
-
-        innerLast = end;
-      }
-      if (innerLast < chunk.length) {
-        container.appendChild(doc.createTextNode(chunk.slice(innerLast)));
-      }
-    };
 
     while ((match = urlRegex.exec(text)) !== null) {
       const full = match[0];
@@ -123,7 +56,7 @@ function linkifyHtml(html: string, repoUrlBase?: string): string {
       // Flush preceding text
       if (start > lastIndex) {
         const chunk = text.slice(lastIndex, start);
-        appendHashChunk(frag, chunk);
+        frag.appendChild(doc.createTextNode(chunk));
       }
 
           // Trim trailing punctuation from display and href
@@ -153,13 +86,9 @@ function linkifyHtml(html: string, repoUrlBase?: string): string {
           lastIndex = end;
         }
 
-        // After URLs, also linkify #123 when repoUrlBase is known
+        // Append remaining text as-is (no #123 linkification)
         const rest = text.slice(lastIndex);
-        if (rest) {
-          const innerFrag = doc.createDocumentFragment();
-          appendHashChunk(innerFrag, rest);
-          frag.appendChild(innerFrag);
-        }
+        if (rest) frag.appendChild(doc.createTextNode(rest));
 
         if (frag.childNodes.length > 0) {
           node.parentNode?.replaceChild(frag, node);
