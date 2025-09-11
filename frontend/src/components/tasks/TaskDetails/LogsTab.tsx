@@ -534,7 +534,7 @@ function LogsTab({ selectedAttempt }: Props) {
 
   return (
     <div className="w-full h-full flex flex-col">
-      <div className="flex-1">
+      <div className="flex-1 min-h-0 overflow-hidden">
         {runningGroupHeader && (
           <div className="sticky top-0 z-20">
             <ProcessGroup
@@ -553,7 +553,8 @@ function LogsTab({ selectedAttempt }: Props) {
           followOutput
           increaseViewportBy={200}
           overscan={5}
-          components={{ Footer: () => <div className="pb-4" /> }}
+          // Add generous bottom padding so content doesn't sit behind the follow-up form below
+          components={{ Footer: () => <div className="pb-40" /> }}
         />
       </div>
     </div>
