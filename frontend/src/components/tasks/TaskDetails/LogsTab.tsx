@@ -318,6 +318,19 @@ function LogsTab({ selectedAttempt }: Props) {
     return undefined;
   }, [branchStatus]);
 
+  // Sticky running process header (kept visible at top)
+  const runningProcessId = useMemo(() => {
+    const running = (attemptData.processes || [])
+      .filter((p) => !p.dropped && p.status === 'running' && shouldShowInLogs(p.run_reason));
+    return running.length > 0 ? running[running.length - 1].id : null;
+  }, [attemptData.processes?.map((p) => `${p.id}:${p.status}:${p.dropped}`).join(',')]);
+
+  const runningGroupHeader = useMemo(() => {
+    if (!runningProcessId) return null;
+    const g = groups.find((g) => g.processId === runningProcessId);
+    return g?.header || null;
+  }, [groups, runningProcessId]);
+
   const itemContent = useCallback(
     (
       _index: number,
@@ -483,6 +496,7 @@ function LogsTab({ selectedAttempt }: Props) {
           }
         }
 
+        const hideHeader = !!runningGroupHeader && group.processId === runningProcessId;
         return (
           <ProcessGroup
             header={group.header}
@@ -491,6 +505,7 @@ function LogsTab({ selectedAttempt }: Props) {
             onToggle={toggleProcessCollapse}
             restore={restore}
             repoUrlBase={repoUrlBase}
+            hideHeader={hideHeader}
           />
         );
       })(),
@@ -505,21 +520,10 @@ function LogsTab({ selectedAttempt }: Props) {
       branchStatus?.head_oid,
       branchStatus?.has_uncommitted_changes,
       repoUrlBase,
+      runningGroupHeader,
+      runningProcessId,
     ]
   );
-
-  // Sticky running process header (kept visible at top)
-  const runningProcessId = useMemo(() => {
-    const running = (attemptData.processes || [])
-      .filter((p) => !p.dropped && p.status === 'running' && shouldShowInLogs(p.run_reason));
-    return running.length > 0 ? running[running.length - 1].id : null;
-  }, [attemptData.processes?.map((p) => `${p.id}:${p.status}:${p.dropped}`).join(',')]);
-
-  const runningGroupHeader = useMemo(() => {
-    if (!runningProcessId) return null;
-    const g = groups.find((g) => g.processId === runningProcessId);
-    return g?.header || null;
-  }, [groups, runningProcessId]);
 
   if (!filteredProcesses || filteredProcesses.length === 0) {
     return (
