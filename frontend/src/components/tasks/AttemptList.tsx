@@ -41,4 +41,3 @@ export function AttemptList({
 }
 
 export default AttemptList;
-
