@@ -9,6 +9,7 @@ import {
   Settings,
   StopCircle,
   ScrollText,
+  Trash2,
 } from 'lucide-react';
 import {
   Tooltip,
@@ -47,6 +48,8 @@ import { useKeyboardShortcuts } from '@/lib/keyboard-shortcuts.ts';
 import { writeClipboardViaBridge } from '@/vscode/bridge';
 import { useProcessSelection } from '@/contexts/ProcessSelectionContext';
 import { showModal } from '@/lib/modals';
+import { attemptsApi } from '@/lib/api';
+import { useQueryClient } from '@tanstack/react-query';
 
 // Helper function to get the display name for different editor types
 function getEditorDisplayName(editorType: string): string {
@@ -83,6 +86,8 @@ type Props = {
   handleEnterCreateAttemptMode: () => void;
   branches: GitBranch[];
   setSelectedAttempt: (attempt: TaskAttempt | null) => void;
+  showHistory?: boolean;
+  showNewAttemptInCard?: boolean;
 };
 
 function CurrentAttempt({
@@ -97,8 +102,11 @@ function CurrentAttempt({
   handleEnterCreateAttemptMode,
   branches,
   setSelectedAttempt,
+  showHistory = true,
+  showNewAttemptInCard = true,
 }: Props) {
   const { config } = useUserSystem();
+  const queryClient = useQueryClient();
   const { isAttemptRunning, stopExecution, isStopping } = useAttemptExecution(
     selectedAttempt?.id,
     task.id
@@ -260,6 +268,43 @@ function CurrentAttempt({
       task,
       projectId,
     });
+  };
+
+  const handleDeleteAttempt = async () => {
+    try {
+      const result = await showModal<'confirmed' | 'canceled'>(
+        'confirm',
+        {
+          title: 'Delete this attempt?',
+          message:
+            'This will stop any running processes, remove its workspace, and delete its history. This action cannot be undone.',
+          confirmText: 'Delete',
+          cancelText: 'Cancel',
+          variant: 'destructive',
+        }
+      );
+      if (result !== 'confirmed') return;
+
+      const deletingId = selectedAttempt.id;
+      // Pick a fallback attempt before deletion (next most recent)
+      const fallback = taskAttempts.find((a) => a.id !== deletingId) || null;
+
+      await attemptsApi.delete(deletingId);
+
+      // Refresh attempts list
+      queryClient.invalidateQueries({ queryKey: ['taskAttempts', task.id] });
+
+      // Switch selection if there is a fallback attempt
+      if (fallback) {
+        setSelectedAttempt(fallback);
+      } else {
+        // No attempts left; allow parent to render create-attempt UI.
+      }
+    } catch (e: any) {
+      // Surface server-side validation messages when present
+      const msg = e?.message || 'Failed to delete attempt';
+      setError(msg);
+    }
   };
 
   // Get display name for selected branch
@@ -708,17 +753,19 @@ function CurrentAttempt({
                 {isStopping ? 'Stopping...' : 'Stop Attempt'}
               </Button>
             ) : (
-              <Button
-                variant="outline"
-                size="xs"
-                onClick={handleEnterCreateAttemptMode}
-                className="gap-1 flex-1"
-              >
-                <Plus className="h-4 w-4" />
-                New Attempt
-              </Button>
+              showNewAttemptInCard ? (
+                <Button
+                  variant="outline"
+                  size="xs"
+                  onClick={handleEnterCreateAttemptMode}
+                  className="gap-1 flex-1"
+                >
+                  <Plus className="h-4 w-4" />
+                  New Attempt
+                </Button>
+              ) : null
             )}
-            {taskAttempts.length > 1 && (
+            {showHistory && taskAttempts.length > 1 && (
               <DropdownMenu>
                 <TooltipProvider>
                   <Tooltip>
@@ -757,6 +804,15 @@ function CurrentAttempt({
                 </DropdownMenuContent>
               </DropdownMenu>
             )}
+            <Button
+              variant="outline"
+              size="xs"
+              onClick={handleDeleteAttempt}
+              className="gap-1 border-destructive text-destructive hover:bg-destructive/10"
+            >
+              <Trash2 className="h-3 w-3" />
+              Delete
+            </Button>
           </div>
         </div>
       </div>
