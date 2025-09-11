@@ -53,6 +53,7 @@ function CreateAttempt({
     'default' | 'low' | 'medium' | 'high' | 'custom'
   >('high');
   const [codexCustomModel, setCodexCustomModel] = useState('');
+  const [reuseBranch, setReuseBranch] = useState(false);
 
   // Create attempt logic
   const actuallyCreateAttempt = useCallback(
@@ -78,6 +79,8 @@ function CreateAttempt({
       const newAttempt = await createAttempt({
         profile,
         baseBranch: effectiveBaseBranch,
+        reuseBranchAttemptId:
+          reuseBranch && selectedAttempt?.branch ? (selectedAttempt.id as string) : undefined,
       });
 
       // Send the initial prompt immediately as the first follow-up
@@ -132,8 +135,9 @@ function CreateAttempt({
             'create-attempt-confirm',
             {
               title: 'Start New Attempt?',
-              message:
-                'Are you sure you want to start a new attempt for this task? This will create a new session and branch.',
+              message: reuseBranch
+                ? 'Start a new attempt on the SAME branch. A new session will begin; no new branch/worktree will be created.'
+                : 'Start a new attempt for this task. This will create a new session and branch/worktree.',
             }
           );
 
@@ -195,12 +199,15 @@ function CreateAttempt({
         <div className="flex items-center">
           <label className="text-xs font-medium text-muted-foreground">
             Starting a new attempt creates a fresh session with your selected
-            coding agent on the same base branch as the current attempt. A
-            dedicated git worktree and task branch are created automatically.
+            coding agent. By default a dedicated branch/worktree is created.
           </label>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-end">
+          {/* Section: Branch */}
+          <div className="sm:col-span-2 text-xs font-medium text-muted-foreground uppercase tracking-wide">
+            Branch
+          </div>
           {/* Step 1: Choose Base Branch */}
           <div className="space-y-1">
             <div className="flex items-center gap-1.5">
@@ -220,6 +227,7 @@ function CreateAttempt({
                 const val = e.target.value;
                 setSelectedBranch(val || null);
               }}
+              disabled={reuseBranch}
               // Render options
             >
             {(() => {
@@ -235,6 +243,21 @@ function CreateAttempt({
               ));
             })()}
             </select>
+            {selectedAttempt?.branch && (
+              <label className="inline-flex items-center gap-2 mt-2 text-xs">
+                <input
+                  type="checkbox"
+                  className="accent-primary"
+                  checked={reuseBranch}
+                  onChange={(e) => setReuseBranch(e.target.checked)}
+                />
+                Reuse current attempt's branch (no new branch/worktree)
+              </label>
+            )}
+          </div>
+          {/* Section: Agent */}
+          <div className="sm:col-span-2 pt-1 border-t text-xs font-medium text-muted-foreground uppercase tracking-wide">
+            Agent
           </div>
           {/* Step 2: Choose Profile */}
           <div className="space-y-1">
@@ -365,16 +388,10 @@ function CreateAttempt({
             })()}
           </div>
 
-          {/* Step 4: Initial Instructions (required) */}
-          <div className="space-y-1 sm:col-span-2">
-            <div className="flex items-center gap-1.5">
-              <label className="text-xs font-medium text-muted-foreground">
-                Initial Instructions
-              </label>
-              <span className="text-[10px] text-destructive">(required)</span>
-            </div>
-            {(selectedProfile?.executor as any) === 'CODEX' && (
-              <div className="flex gap-2 mb-2">
+          {/* Agent-specific model selectors */}
+          {(selectedProfile?.executor as any) === 'CODEX' && (
+            <div className="sm:col-span-2">
+              <div className="flex gap-2">
                 <select
                   className="w-40 text-xs border rounded px-2 py-1 bg-background"
                   value={codexReasoning}
@@ -395,20 +412,34 @@ function CreateAttempt({
                   />
                 )}
               </div>
-            )}
-            {(selectedProfile?.executor as any) === 'CLAUDE_CODE' && (
-              <div className="flex gap-2 mb-2">
-                <select
-                  className="w-40 text-xs border rounded px-2 py-1 bg-background"
-                  value={claudeModel}
-                  onChange={(e) => setClaudeModel(e.target.value as any)}
-                >
-                  <option value="default">default</option>
-                  <option value="sonnet">sonnet</option>
-                  <option value="opus">opus</option>
-                </select>
-              </div>
-            )}
+            </div>
+          )}
+          {(selectedProfile?.executor as any) === 'CLAUDE_CODE' && (
+            <div className="sm:col-span-2">
+              <select
+                className="w-40 text-xs border rounded px-2 py-1 bg-background"
+                value={claudeModel}
+                onChange={(e) => setClaudeModel(e.target.value as any)}
+              >
+                <option value="default">default</option>
+                <option value="sonnet">sonnet</option>
+                <option value="opus">opus</option>
+              </select>
+            </div>
+          )}
+
+          {/* Step 4: Initial Instructions (required) */}
+          <div className="space-y-1 sm:col-span-2 pt-1 border-t">
+            <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+              Instructions
+            </div>
+            <div className="flex items-center gap-1.5">
+              <label className="text-xs font-medium text-muted-foreground">
+                Initial Instructions
+              </label>
+              <span className="text-[10px] text-destructive">(required)</span>
+            </div>
+            
             <Textarea
               value={initialPrompt}
               onChange={(e) => setInitialPrompt(e.target.value)}
