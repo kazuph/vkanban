@@ -13,14 +13,17 @@ export function useAttemptCreation(taskId: string) {
     mutationFn: ({
       profile,
       baseBranch,
+      reuseBranchAttemptId,
     }: {
       profile: ExecutorProfileId;
       baseBranch: string;
+      reuseBranchAttemptId?: string | null;
     }) =>
       attemptsApi.create({
         task_id: taskId,
         executor_profile_id: profile,
         base_branch: baseBranch,
+        reuse_branch_of_attempt_id: reuseBranchAttemptId ?? null,
       }),
     onSuccess: (newAttempt: TaskAttempt) => {
       // Optimistically add to cache to prevent UI flicker

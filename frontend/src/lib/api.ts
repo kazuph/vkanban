@@ -489,6 +489,13 @@ export const attemptsApi = {
     );
     return handleApiResponse<void>(response);
   },
+  
+  delete: async (attemptId: string): Promise<void> => {
+    const response = await makeRequest(`/api/task-attempts/${attemptId}`, {
+      method: 'DELETE',
+    });
+    return handleApiResponse<void>(response);
+  },
 };
 
 // Extra helpers
