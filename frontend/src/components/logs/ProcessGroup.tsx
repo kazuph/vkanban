@@ -7,6 +7,7 @@ type Props = {
   entries: UnifiedLogEntry[];
   isCollapsed: boolean;
   onToggle: (processId: string) => void;
+  hideHeader?: boolean;
   restore?: {
     onRestore: (processId: string) => void;
     restoreProcessId?: string;
@@ -21,20 +22,23 @@ export default function ProcessGroup({
   entries,
   isCollapsed,
   onToggle,
+  hideHeader = false,
   restore,
   repoUrlBase,
 }: Props) {
   return (
     <div className="px-4 mt-4">
-      <ProcessStartCard
-        payload={header}
-        isCollapsed={isCollapsed}
-        onToggle={onToggle}
-        onRestore={restore?.onRestore}
-        restoreProcessId={restore?.restoreProcessId}
-        restoreDisabled={restore?.restoreDisabled}
-        restoreDisabledReason={restore?.restoreDisabledReason}
-      />
+      {!hideHeader && (
+        <ProcessStartCard
+          payload={header}
+          isCollapsed={isCollapsed}
+          onToggle={onToggle}
+          onRestore={restore?.onRestore}
+          restoreProcessId={restore?.restoreProcessId}
+          restoreDisabled={restore?.restoreDisabled}
+          restoreDisabledReason={restore?.restoreDisabledReason}
+        />
+      )}
       <div className="text-sm">
         {!isCollapsed &&
           entries.length > 0 &&
