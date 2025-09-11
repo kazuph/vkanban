@@ -109,14 +109,28 @@ function TaskDetailsToolbar({
   // Fetch branches via React Query hook
   const branchesQuery = useProjectBranches(projectId);
   useEffect(() => {
-    if (branchesQuery.data) {
-      setBranches(branchesQuery.data);
-      const currentBranch = branchesQuery.data.find((b) => b.is_current);
-      if (currentBranch) {
-        setSelectedBranch((prev) => (!prev ? currentBranch.name : prev));
-      }
-    }
-  }, [branchesQuery.data]);
+    if (!branchesQuery.data) return;
+    setBranches(branchesQuery.data);
+
+    // Preferred default: the branch already used by this task (latest attempt)
+    const latestAttempt = selectedAttempt
+      ? selectedAttempt
+      : taskAttempts.length > 0
+        ? taskAttempts.reduce((latest, cur) =>
+            new Date(cur.created_at) > new Date(latest.created_at) ? cur : latest
+          )
+        : null;
+    const taskBranch = latestAttempt?.branch || null;
+
+    const currentBranch = branchesQuery.data.find((b) => b.is_current)?.name || null;
+
+    setSelectedBranch((prev) => {
+      if (prev) return prev;
+      if (taskBranch) return taskBranch;
+      if (currentBranch) return currentBranch;
+      return branchesQuery.data[0]?.name || null;
+    });
+  }, [branchesQuery.data, selectedAttempt, taskAttempts]);
 
   // Set default executor from config
   useEffect(() => {
@@ -175,6 +189,7 @@ function TaskDetailsToolbar({
           <CreateAttempt
             task={task}
             selectedBranch={selectedBranch}
+            setSelectedBranch={setSelectedBranch}
             selectedProfile={selectedProfile}
             taskAttempts={taskAttempts}
             branches={branches}

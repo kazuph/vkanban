@@ -12,6 +12,7 @@ interface AttemptHeaderCardProps {
   projectId?: string; // unused (actions moved)
   // onCreateNewAttempt?: () => void;
   onJumpToDiffFullScreen?: () => void;
+  onCreateNewAttempt?: () => void;
 }
 
 export function AttemptHeaderCard({
@@ -20,6 +21,7 @@ export function AttemptHeaderCard({
   selectedAttempt,
   // onCreateNewAttempt,
   onJumpToDiffFullScreen,
+  onCreateNewAttempt,
 }: AttemptHeaderCardProps) {
   const { fileCount, added, deleted } = useDiffSummary(
     selectedAttempt?.id ?? null
@@ -88,7 +90,18 @@ export function AttemptHeaderCard({
           </p>
         )}
       </div>
-      {/* Actions moved to Task header; menu removed intentionally */}
+      <div className="pr-3">
+        {onCreateNewAttempt && (
+          <Button
+            variant="outline"
+            size="xs"
+            onClick={onCreateNewAttempt}
+            className="gap-1"
+          >
+            New Attempt
+          </Button>
+        )}
+      </div>
     </Card>
   );
 }

@@ -67,6 +67,7 @@ export function TaskDetailsPanel({
 
   // Tab and collapsible state
   const [activeTab, setActiveTab] = useState<TabType>('logs');
+  const [forceCreateLocal, setForceCreateLocal] = useState(false);
 
   // Handler for jumping to diff tab in full screen
   const jumpToDiffFullScreen = () => {
@@ -190,13 +191,16 @@ export function TaskDetailsPanel({
                   </div>
                 ) : (
                   <>
-                    {attempts.length === 0 ? (
+                    {attempts.length === 0 || forceCreateLocal ? (
                       <TaskDetailsToolbar
                         task={task}
                         projectId={projectId}
                         projectHasDevScript={projectHasDevScript}
-                        forceCreateAttempt={forceCreateAttempt}
-                        onLeaveForceCreateAttempt={onLeaveForceCreateAttempt}
+                        forceCreateAttempt={forceCreateLocal || forceCreateAttempt}
+                        onLeaveForceCreateAttempt={() => {
+                          setForceCreateLocal(false);
+                          onLeaveForceCreateAttempt?.();
+                        }}
                         attempts={attempts}
                         selectedAttempt={selectedAttempt}
                         setSelectedAttempt={setSelectedAttempt}
@@ -210,11 +214,8 @@ export function TaskDetailsPanel({
                           selectedAttempt={selectedAttempt}
                           task={task}
                           projectId={projectId}
-                          // onCreateNewAttempt={() => {
-                          //   // TODO: Implement create new attempt
-                          //   console.log('Create new attempt');
-                          // }}
                           onJumpToDiffFullScreen={jumpToDiffFullScreen}
+                          onCreateNewAttempt={() => setForceCreateLocal(true)}
                         />
 
                         <div className="flex-1 min-h-0">

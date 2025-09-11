@@ -25,6 +25,7 @@ type Props = {
   taskAttempts: TaskAttempt[];
   selectedProfile: ExecutorProfileId | null;
   selectedBranch: string | null;
+  setSelectedBranch: Dispatch<SetStateAction<string | null>>;
   setIsInCreateAttemptMode: Dispatch<SetStateAction<boolean>>;
   setSelectedProfile: Dispatch<SetStateAction<ExecutorProfileId | null>>;
   availableProfiles: Record<string, ExecutorConfig> | null;
@@ -37,6 +38,7 @@ function CreateAttempt({
   taskAttempts,
   selectedProfile,
   selectedBranch,
+  setSelectedBranch,
   setIsInCreateAttemptMode,
   setSelectedProfile,
   availableProfiles,
@@ -45,7 +47,7 @@ function CreateAttempt({
   const { isAttemptRunning } = useAttemptExecution(selectedAttempt?.id);
   const { createAttempt, isCreating } = useAttemptCreation(task.id);
   const [initialPrompt, setInitialPrompt] = useState('');
-  const [claudeModel, setClaudeModel] = useState<'default' | 'sonnet' | 'opus'>('default');
+  const [claudeModel, setClaudeModel] = useState<'default' | 'sonnet' | 'opus'>('sonnet');
   // Codex-only model/effort selector for the first follow-up
   const [codexReasoning, setCodexReasoning] = useState<
     'default' | 'low' | 'medium' | 'high' | 'custom'
@@ -55,7 +57,7 @@ function CreateAttempt({
   // Create attempt logic
   const actuallyCreateAttempt = useCallback(
     async (profile: ExecutorProfileId) => {
-      // Always use the same base branch as the current (or latest) attempt.
+      // Default base branch should be the branch already used by this task
       const latestAttempt = selectedAttempt
         ? selectedAttempt
         : taskAttempts.length > 0
@@ -65,9 +67,13 @@ function CreateAttempt({
                 : latest
             )
           : null;
-      const effectiveBaseBranch = latestAttempt?.base_branch || selectedBranch ||
-        // fallback to current git branch if available
-        (branches.find((b) => b.is_current)?.name || branches[0]?.name || 'main');
+
+      const existingTaskBranch = latestAttempt?.branch || null;
+      const currentGitBranch =
+        branches.find((b) => b.is_current)?.name || branches[0]?.name || 'main';
+
+      const effectiveBaseBranch =
+        selectedBranch || existingTaskBranch || latestAttempt?.base_branch || currentGitBranch;
 
       const newAttempt = await createAttempt({
         profile,
@@ -195,6 +201,41 @@ function CreateAttempt({
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-end">
+          {/* Step 1: Choose Base Branch */}
+          <div className="space-y-1">
+            <div className="flex items-center gap-1.5">
+              <label className="text-xs font-medium text-muted-foreground">
+                Base Branch
+              </label>
+            </div>
+            <select
+              className="w-full text-xs border rounded px-2 py-1 bg-background"
+              value={
+                selectedBranch ||
+                branches.find((b) => b.is_current)?.name ||
+                branches[0]?.name ||
+                ''
+              }
+              onChange={(e) => {
+                const val = e.target.value;
+                setSelectedBranch(val || null);
+              }}
+              // Render options
+            >
+            {(() => {
+              const names = new Set<string>(branches.map((b) => b.name));
+              if (selectedBranch && !names.has(selectedBranch)) {
+                // Ensure the current selection is selectable even if not in list
+                names.add(selectedBranch);
+              }
+              return Array.from(names).map((name) => (
+                <option key={name} value={name}>
+                  {name}
+                </option>
+              ));
+            })()}
+            </select>
+          </div>
           {/* Step 2: Choose Profile */}
           <div className="space-y-1">
             <div className="flex items-center gap-1.5">
