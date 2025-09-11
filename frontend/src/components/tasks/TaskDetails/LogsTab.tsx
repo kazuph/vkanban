@@ -508,6 +508,19 @@ function LogsTab({ selectedAttempt }: Props) {
     ]
   );
 
+  // Sticky running process header (kept visible at top)
+  const runningProcessId = useMemo(() => {
+    const running = (attemptData.processes || [])
+      .filter((p) => !p.dropped && p.status === 'running' && shouldShowInLogs(p.run_reason));
+    return running.length > 0 ? running[running.length - 1].id : null;
+  }, [attemptData.processes?.map((p) => `${p.id}:${p.status}:${p.dropped}`).join(',')]);
+
+  const runningGroupHeader = useMemo(() => {
+    if (!runningProcessId) return null;
+    const g = groups.find((g) => g.processId === runningProcessId);
+    return g?.header || null;
+  }, [groups, runningProcessId]);
+
   if (!filteredProcesses || filteredProcesses.length === 0) {
     return (
       <div className="flex-1 flex items-center justify-center text-muted-foreground">
@@ -522,6 +535,16 @@ function LogsTab({ selectedAttempt }: Props) {
   return (
     <div className="w-full h-full flex flex-col">
       <div className="flex-1">
+        {runningGroupHeader && (
+          <div className="sticky top-0 z-20">
+            <ProcessGroup
+              header={{ ...runningGroupHeader, status: 'running' }}
+              entries={[]}
+              isCollapsed={false}
+              onToggle={() => {}}
+            />
+          </div>
+        )}
         <Virtuoso
           ref={virtuosoRef}
           style={{ height: '100%' }}

@@ -39,6 +39,30 @@ function ProcessStartCard({
   restoreDisabled,
   restoreDisabledReason,
 }: ProcessStartCardProps) {
+  const computeAgentLabel = (p: ProcessStartPayload): string | null => {
+    if (!p.action) return null;
+    const t: any = p.action.typ || {};
+    const exec: string | undefined = t?.executor_profile_id?.executor;
+    if (!exec) return null;
+    let setting: string | null = null;
+    if (exec === 'CODEX') {
+      const m = (t.codex_model_override || '') as string;
+      setting = m
+        ? m === 'gpt-5'
+          ? 'high'
+          : m === 'codex-mini-latest'
+            ? 'medium'
+            : m === 'o4-mini'
+              ? 'low'
+              : m
+        : 'default';
+    } else if (exec === 'CLAUDE_CODE') {
+      const m = (t.claude_model_override || '') as string;
+      setting = m ? m : 'default';
+    }
+    const execName = exec === 'CLAUDE_CODE' ? 'Claude Code' : exec;
+    return setting ? `${execName}(${setting})` : execName;
+  };
   const getProcessLabel = (p: ProcessStartPayload) => {
     if (p.runReason === PROCESS_RUN_REASONS.CODING_AGENT) {
       const prompt = extractPromptFromAction(p.action);
@@ -123,7 +147,29 @@ function ProcessStartCard({
       onKeyDown={handleKeyDown}
     >
       <div className="flex items-center gap-2 text-sm font-light">
+        {/* Status chip - moved to left */}
+        <div
+          className={cn(
+            'text-xs px-2 py-1 rounded-full flex-shrink-0',
+            payload.status === 'running'
+              ? 'bg-blue-100 text-blue-700'
+              : payload.status === 'completed'
+                ? 'bg-green-100 text-green-700'
+                : payload.status === 'failed'
+                  ? 'bg-red-100 text-red-700'
+                  : 'bg-gray-100 text-gray-700'
+          )}
+        >
+          {payload.status}
+        </div>
+
+        {/* Main label + optional agent */}
         <div className="flex items-center gap-2 text-foreground min-w-0 flex-1">
+          {payload.runReason === PROCESS_RUN_REASONS.CODING_AGENT && (
+            <span className="text-xs text-muted-foreground flex-shrink-0">
+              Agent · {computeAgentLabel(payload) || '—'}
+            </span>
+          )}
           <span
             className={cn(
               shouldTruncate ? 'truncate' : 'whitespace-normal break-words'
@@ -133,6 +179,7 @@ function ProcessStartCard({
             {renderLabelWithLinks(label)}
           </span>
         </div>
+
         {onRestore &&
           payload.runReason === PROCESS_RUN_REASONS.CODING_AGENT && (
             <TooltipProvider>
@@ -165,21 +212,6 @@ function ProcessStartCard({
               </Tooltip>
             </TooltipProvider>
           )}
-
-        <div
-          className={cn(
-            'ml-auto text-xs px-2 py-1 rounded-full',
-            payload.status === 'running'
-              ? 'bg-blue-100 text-blue-700'
-              : payload.status === 'completed'
-                ? 'bg-green-100 text-green-700'
-                : payload.status === 'failed'
-                  ? 'bg-red-100 text-red-700'
-                  : 'bg-gray-100 text-gray-700'
-          )}
-        >
-          {payload.status}
-        </div>
 
         <ChevronDown
           className={cn(
