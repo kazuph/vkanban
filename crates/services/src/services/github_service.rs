@@ -120,6 +120,50 @@ pub struct CreatePrRequest {
     pub base_branch: String,
 }
 
+impl GitHubService {
+    /// Find an open PR for the given `head_branch` (optionally constrained by base branch).
+    /// Returns the PR info if found; otherwise `Ok(None)`.
+    pub async fn find_open_pr_for_branch(
+        &self,
+        repo_info: &GitHubRepoInfo,
+        head_branch: &str,
+        base_branch: Option<&str>,
+    ) -> Result<Option<(PullRequestInfo, String)>, GitHubServiceError> {
+        use octocrab::params;
+
+        // The list pulls endpoint supports filtering by `head` in the form `owner:branch`.
+        let pulls_handler = self.client.pulls(&repo_info.owner, &repo_info.repo_name);
+        let mut builder = pulls_handler
+            .list()
+            .state(params::State::Open)
+            .head(format!("{}:{}", repo_info.owner, head_branch))
+            .per_page(10);
+        if let Some(base) = base_branch {
+            if !base.trim().is_empty() {
+                builder = builder.base(base.to_string());
+            }
+        }
+
+        let page = builder
+            .send()
+            .await
+            .map_err(GitHubServiceError::from)?;
+
+        if let Some(pr) = page.items.into_iter().next() {
+            let pr_info = PullRequestInfo {
+                number: pr.number as i64,
+                url: pr.html_url.map(|u| u.to_string()).unwrap_or_default(),
+                status: MergeStatus::Open,
+                merged_at: None,
+                merge_commit_sha: None,
+            };
+            let base = pr.base.ref_field.clone();
+            return Ok(Some((pr_info, base)));
+        }
+        Ok(None)
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 pub struct RepositoryInfo {
     pub id: i64,
