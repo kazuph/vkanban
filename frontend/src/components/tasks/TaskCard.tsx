@@ -18,6 +18,8 @@ import {
 } from 'lucide-react';
 import { FolderOpen } from 'lucide-react';
 import type { TaskWithAttemptStatus } from 'shared/types';
+import type { TaskPrStatus } from '@/lib/api';
+import { GitPullRequest } from 'lucide-react';
 import { projectsApi } from '@/lib/api';
 
 type Task = TaskWithAttemptStatus;
@@ -32,6 +34,7 @@ interface TaskCardProps {
   onViewDetails: (task: Task) => void;
   isFocused: boolean;
   tabIndex?: number;
+  prStatus?: TaskPrStatus;
 }
 
 export function TaskCard({
@@ -44,6 +47,7 @@ export function TaskCard({
   onViewDetails,
   isFocused,
   tabIndex = -1,
+  prStatus,
 }: TaskCardProps) {
   const localRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -146,6 +150,19 @@ export function TaskCard({
         {/* Failed Indicator */}
         {task.last_attempt_failed && !task.has_merged_attempt && (
           <XCircle className="h-3 w-3 text-destructive" />
+        )}
+        {/* Open PR Indicator */}
+        {prStatus?.has_open_pr && (
+          <button
+            className="p-0.5 rounded hover:bg-muted"
+            title="Open PR"
+            onClick={(e) => {
+              e.stopPropagation();
+              if (prStatus.open_pr_url) window.open(prStatus.open_pr_url, '_blank');
+            }}
+          >
+            <GitPullRequest className="h-3 w-3 text-blue-600" />
+          </button>
         )}
       </div>
 

@@ -18,6 +18,8 @@ import { Button } from '@/components/ui/button';
 import { Plus } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { openTaskForm } from '@/lib/openTaskForm';
+import { tasksApi, type TaskPrStatus } from '@/lib/api';
+import { useQuery } from '@tanstack/react-query';
 
 type Task = TaskWithAttemptStatus;
 
@@ -65,6 +67,20 @@ function TaskKanbanBoard({
     taskId || null
   );
   const [focusedStatus, setFocusedStatus] = useState<TaskStatus | null>(null);
+
+  // PR status map per task for this project (lightweight)
+  const prStatusQuery = useQuery<{ [taskId: string]: TaskPrStatus }>({
+    queryKey: ['tasksPrStatus', projectId],
+    queryFn: async ({ signal }) => {
+      if (!projectId) return {};
+      const list = await tasksApi.getPrStatus(projectId, signal);
+      const map: { [taskId: string]: TaskPrStatus } = {};
+      for (const s of list) map[s.task_id] = s;
+      return map;
+    },
+    enabled: !!projectId,
+    refetchInterval: 60_000,
+  });
 
   // Memoize filtered tasks
   const filteredTasks = useMemo(() => {
@@ -209,6 +225,7 @@ function TaskKanbanBoard({
                 onViewDetails={onViewTaskDetails}
                 isFocused={focusedTaskId === task.id}
                 tabIndex={focusedTaskId === task.id ? 0 : -1}
+                prStatus={prStatusQuery.data?.[task.id]}
               />
             ))}
           </KanbanCards>
@@ -217,5 +234,4 @@ function TaskKanbanBoard({
     </KanbanProvider>
   );
 }
-
 export default memo(TaskKanbanBoard);

@@ -42,6 +42,12 @@ import {
 
 // Re-export types for convenience
 export type { RepositoryInfo } from 'shared/types';
+// Local-only API types for endpoints not currently included in shared/types
+export type TaskPrStatus = {
+  task_id: string;
+  has_open_pr: boolean;
+  open_pr_url: string | null;
+};
 
 export class ApiError<E = unknown> extends Error {
   public status?: number;
@@ -277,6 +283,18 @@ export const tasksApi = {
       signal,
     });
     return handleApiResponse<TaskWithAttemptStatus[]>(response);
+  },
+
+  // PR status map per task in a project
+  getPrStatus: async (
+    projectId: string,
+    signal?: AbortSignal
+  ): Promise<TaskPrStatus[]> => {
+    const response = await makeRequest(
+      `/api/tasks/pr-status?project_id=${projectId}`,
+      { signal }
+    );
+    return handleApiResponse<TaskPrStatus[]>(response);
   },
 
   getById: async (taskId: string): Promise<Task> => {
