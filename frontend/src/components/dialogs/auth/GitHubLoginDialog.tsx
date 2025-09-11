@@ -124,7 +124,12 @@ const GitHubLoginDialog = NiceModal.create(() => {
   };
 
   return (
-    <Dialog open={modal.visible} onOpenChange={modal.resolve}>
+    <Dialog
+      open={modal.visible}
+      onOpenChange={(open) => {
+        if (!open) modal.hide();
+      }}
+    >
       <DialogContent>
         <DialogHeader>
           <div className="flex items-center gap-3">
@@ -155,7 +160,7 @@ const GitHubLoginDialog = NiceModal.create(() => {
               </CardContent>
             </Card>
             <DialogFooter>
-              <Button onClick={() => modal.resolve()} className="w-full">
+              <Button onClick={() => modal.hide()} className="w-full">
                 Close
               </Button>
             </DialogFooter>
@@ -229,7 +234,7 @@ const GitHubLoginDialog = NiceModal.create(() => {
             )}
 
             <DialogFooter>
-              <Button variant="outline" onClick={() => modal.resolve()}>
+              <Button variant="outline" onClick={() => modal.hide()}>
                 Skip
               </Button>
             </DialogFooter>
@@ -282,7 +287,7 @@ const GitHubLoginDialog = NiceModal.create(() => {
             <DialogFooter className="gap-3 flex-col sm:flex-row">
               <Button
                 variant="outline"
-                onClick={() => modal.resolve()}
+                onClick={() => modal.hide()}
                 className="flex-1"
               >
                 Skip
