@@ -856,6 +856,65 @@ pub async fn create_github_pr(
             "No branch found for task attempt".to_string(),
         ))
     })?;
+    // 1) 既存PRリンクがDBにあればそのURLを返す（ブラウザも開く）
+    if let Ok(merges) = Merge::find_by_task_attempt_id(pool, task_attempt.id).await {
+        if let Some(existing_open) = merges.into_iter().find_map(|m| match m {
+            Merge::Pr(pr) if matches!(pr.pr_info.status, MergeStatus::Open) => Some(pr),
+            _ => None,
+        }) {
+            let url = existing_open.pr_info.url.clone();
+            let pr_url = url.clone();
+            tokio::spawn(async move {
+                if let Err(e) = open_browser(&pr_url).await {
+                    tracing::debug!("Failed to open PR in browser (ignored): {}", e);
+                }
+            });
+            return Ok(ResponseJson(ApiResponse::success(url)));
+        }
+    }
+
+    // 2) GitHub上に既存のオープンPRがあるかを一度スキャン。見つかればDBに登録して返す
+    if let Some((pr_info, base_detected)) = github_service
+        .find_open_pr_for_branch(&repo_info, branch_name, None)
+        .await
+        .map_err(ApiError::GitHubService)?
+    {
+        let target_base = if !base_detected.trim().is_empty() {
+            base_detected
+        } else {
+            task_attempt.base_branch.clone()
+        };
+        if let Err(e) = Merge::create_pr(
+            pool,
+            task_attempt.id,
+            &target_base,
+            pr_info.number,
+            &pr_info.url,
+        )
+        .await
+        {
+            tracing::error!("Failed to record existing PR in DB: {}", e);
+        }
+
+        deployment
+            .track_if_analytics_allowed(
+                "github_pr_linked_existing",
+                serde_json::json!({
+                    "task_id": task.id.to_string(),
+                    "project_id": project.id.to_string(),
+                    "attempt_id": task_attempt.id.to_string(),
+                }),
+            )
+            .await;
+
+        let pr_url = pr_info.url.clone();
+        tokio::spawn(async move {
+            if let Err(e) = open_browser(&pr_url).await {
+                tracing::debug!("Failed to open PR in browser (ignored): {}", e);
+            }
+        });
+        return Ok(ResponseJson(ApiResponse::success(pr_info.url)));
+    }
     let workspace_path = PathBuf::from(
         deployment
             .container()
