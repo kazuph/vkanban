@@ -212,7 +212,19 @@ executor_profile_id: ExecutorProfileId, base_branch: string,
  * Reuse branch/worktree of an existing attempt (same task). If provided, server ignores
  * new branch creation and starts a new attempt on the same branch.
  */
-reuse_branch_of_attempt_id?: string | null, };
+reuse_branch_of_attempt_id?: string | null, 
+/**
+ * Initial instructions to be treated as the primary request
+ */
+initial_instructions?: string | null, 
+/**
+ * Optional model override for Codex on initial run
+ */
+codex_model_override?: string | null, 
+/**
+ * Optional model override for Claude on initial run
+ */
+claude_model_override?: string | null, };
 
 export type RebaseTaskAttemptRequest = { new_base_branch: string | null, };
 

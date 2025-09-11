@@ -185,6 +185,12 @@ pub struct CreateTaskAttemptBody {
     pub base_branch: String,
     /// Optional: reuse branch and worktree from an existing attempt (same task)
     pub reuse_branch_of_attempt_id: Option<Uuid>,
+    /// Optional: initial instructions to be treated as the primary request
+    pub initial_instructions: Option<String>,
+    /// Optional model override for Codex on initial run
+    pub codex_model_override: Option<String>,
+    /// Optional model override for Claude on initial run
+    pub claude_model_override: Option<String>,
 }
 
 impl CreateTaskAttemptBody {
@@ -251,7 +257,13 @@ pub async fn create_task_attempt(
 
     let execution_process = deployment
         .container()
-        .start_attempt(&task_attempt, executor_profile_id.clone())
+        .start_attempt(
+            &task_attempt,
+            executor_profile_id.clone(),
+            payload.initial_instructions.clone(),
+            payload.codex_model_override.clone(),
+            payload.claude_model_override.clone(),
+        )
         .await?;
 
     deployment

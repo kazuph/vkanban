@@ -492,6 +492,9 @@ pub trait ContainerService {
         &self,
         task_attempt: &TaskAttempt,
         executor_profile_id: ExecutorProfileId,
+        initial_instructions: Option<String>,
+        codex_model_override: Option<String>,
+        claude_model_override: Option<String>,
     ) -> Result<ExecutionProcess, ContainerError> {
         // Create container
         self.create(task_attempt).await?;
@@ -520,14 +523,23 @@ pub trait ContainerService {
                 .as_ref()
                 .ok_or_else(|| ContainerError::Other(anyhow!("Container ref not found")))?,
         );
-        // Build base prompt from task + optional project-level append_prompt, then canonicalize image paths
-        let base_prompt = task.to_prompt();
-        let combined_prompt = if let Some(ref ap) = project.append_prompt {
-            format!("{base_prompt}{ap}")
+        // Build prompt so that Initial Instructions are the primary request,
+        // and the task title/description are background context.
+        let task_background = task.to_prompt();
+        let mut combined = if let Some(ii) = initial_instructions.filter(|s| !s.trim().is_empty()) {
+            format!(
+                "{}\n\n[Background]\n{}",
+                ii.trim(),
+                task_background
+            )
         } else {
-            base_prompt
+            // Backwards compatible fallback: previous behavior
+            task_background
         };
-        let prompt = ImageService::canonicalise_image_paths(&combined_prompt, &worktree_path);
+        if let Some(ref ap) = project.append_prompt {
+            combined = format!("{combined}{ap}");
+        }
+        let prompt = ImageService::canonicalise_image_paths(&combined, &worktree_path);
 
         // Helper: if workspace_dirs configured, run the script in each dir sequentially
         let make_workspace_script = |base_script: &str, ws: Option<&String>| -> String {
@@ -576,8 +588,8 @@ pub trait ContainerService {
                     ExecutorActionType::CodingAgentInitialRequest(CodingAgentInitialRequest {
                         prompt,
                         executor_profile_id: executor_profile_id.clone(),
-                        codex_model_override: None,
-                        claude_model_override: None,
+                        codex_model_override: codex_model_override.clone(),
+                        claude_model_override: claude_model_override.clone(),
                     }),
                     cleanup_action,
                 ))),
@@ -594,8 +606,8 @@ pub trait ContainerService {
                 ExecutorActionType::CodingAgentInitialRequest(CodingAgentInitialRequest {
                     prompt,
                     executor_profile_id: executor_profile_id.clone(),
-                    codex_model_override: None,
-                    claude_model_override: None,
+                    codex_model_override,
+                    claude_model_override,
                 }),
                 cleanup_action,
             );
