@@ -46,8 +46,20 @@ fn main() -> anyhow::Result<()> {
                 asset_dir().join("db.sqlite").to_string_lossy()
             );
 
-            let options = SqliteConnectOptions::from_str(&database_url)?.create_if_missing(false);
+            let options = SqliteConnectOptions::from_str(&database_url)?
+                .create_if_missing(false)
+                .journal_mode(sqlx::sqlite::SqliteJournalMode::Wal)
+                .busy_timeout(std::time::Duration::from_secs(5))
+                .foreign_keys(true);
             let pool = SqlitePool::connect_with(options).await?;
+            // Align connection-level PRAGMAs on every connection (best-effort)
+            let _ = sqlx::query("PRAGMA foreign_keys=ON;").execute(&pool).await;
+            let _ = sqlx::query("PRAGMA wal_autocheckpoint=1000;").execute(&pool).await;
+            let _ = sqlx::query("PRAGMA journal_size_limit=67108864;").execute(&pool).await;
+            // Trim any leftover WAL from previous runs
+            let _ = sqlx::query("PRAGMA wal_checkpoint(TRUNCATE);").execute(&pool).await;
+            // Spawn periodic maintenance when MCP server runs standalone
+            db::maintenance::spawn(pool.clone());
 
             let service = TaskServer::new(pool)
                 .serve(stdio())

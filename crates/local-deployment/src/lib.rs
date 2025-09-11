@@ -92,6 +92,12 @@ impl Deployment for LocalDeployment {
             DBService::new_with_after_connect(hook).await?
         };
 
+        // Spawn periodic DB maintenance (WAL checkpoint / optional vacuum)
+        {
+            let pool = db.clone().pool;
+            db::maintenance::spawn(pool);
+        }
+
         let image = ImageService::new(db.clone().pool)?;
         {
             let image_service = image.clone();
