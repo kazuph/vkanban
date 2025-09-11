@@ -211,9 +211,6 @@ export function ProjectTasks() {
       if (!isPanelOpen) return;
       // In fullscreen, a backdrop already covers the rest; keep default behavior
       if (isFullscreen) return;
-      // Prevent underlying card/list click handlers from firing (so it only closes)
-      e.stopPropagation();
-      e.preventDefault();
       handleClosePanel();
     },
     [isPanelOpen, isFullscreen, handleClosePanel]
