@@ -256,11 +256,16 @@ function CurrentAttempt({
 
   const handlePRButtonClick = async () => {
     if (!projectId || !selectedAttempt?.id || !selectedAttempt?.task_id) return;
-
-    // If PR already exists, push to it
-    if (mergeInfo.hasOpenPR) {
-      await handlePushClick();
-      return;
+    try {
+      // Prefer opening/linking an existing PR instead of always showing the dialog
+      const result = await attemptsApi.openExistingPRIfAny(selectedAttempt.id);
+      if (result.success) {
+        queryClient.invalidateQueries({ queryKey: ['branchStatus', selectedAttempt.id] });
+        if (result.data) window.open(result.data, '_blank');
+        return;
+      }
+    } catch (e) {
+      // ignore and fallback
     }
 
     NiceModal.show('create-pr', {

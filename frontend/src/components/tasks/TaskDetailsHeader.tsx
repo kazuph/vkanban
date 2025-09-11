@@ -28,6 +28,8 @@ import { useDevServer } from '@/hooks/useDevServer';
 import { useRebase } from '@/hooks/useRebase';
 import { useMerge } from '@/hooks/useMerge';
 import NiceModal from '@ebay/nice-modal-react';
+import { attemptsApi } from '@/lib/api';
+import { useQueryClient } from '@tanstack/react-query';
 
 interface TaskDetailsHeaderProps {
   task: TaskWithAttemptStatus;
@@ -62,15 +64,32 @@ function TaskDetailsHeader({
   );
   const rebaseMutation = useRebase(selectedAttempt?.id, projectId);
   const mergeMutation = useMerge(selectedAttempt?.id);
+  const queryClient = useQueryClient();
 
-  const handleCreatePR = useCallback(() => {
+  const handleCreatePR = useCallback(async () => {
     if (!selectedAttempt || !projectId) return;
+    // 1) Try to open/link existing PR first (no dialog)
+    try {
+      const result = await attemptsApi.openExistingPRIfAny(selectedAttempt.id);
+      if (result.success) {
+        // Keep local UI in sync with newly linked PR
+        queryClient.invalidateQueries({
+          queryKey: ['branchStatus', selectedAttempt.id],
+        });
+        // Also open in the browser tab (server already best-effort opens)
+        if (result.data) window.open(result.data, '_blank');
+        return;
+      }
+    } catch (e) {
+      // Ignore and fall back to dialog
+    }
+    // 2) No existing PR → open dialog to collect inputs
     NiceModal.show('create-pr', {
       attempt: selectedAttempt,
       task,
       projectId,
     });
-  }, [selectedAttempt, projectId, task]);
+  }, [selectedAttempt, projectId, task, queryClient]);
 
   return (
     <div>

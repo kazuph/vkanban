@@ -480,6 +480,19 @@ export const attemptsApi = {
     return handleApiResponseAsResult<string, GitHubServiceError>(response);
   },
 
+  // Best-effort: if an open PR already exists for the attempt's branch,
+  // link it in DB (if needed), open it in the browser, and return its URL.
+  // If none exists, returns { success: false } so the caller can open the dialog.
+  openExistingPRIfAny: async (
+    attemptId: string
+  ): Promise<Result<string, never>> => {
+    const response = await makeRequest(
+      `/api/task-attempts/${attemptId}/pr/open-existing`,
+      { method: 'POST' }
+    );
+    return handleApiResponseAsResult<string, never>(response);
+  },
+
   startDevServer: async (attemptId: string): Promise<void> => {
     const response = await makeRequest(
       `/api/task-attempts/${attemptId}/start-dev-server`,
