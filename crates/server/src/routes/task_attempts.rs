@@ -9,7 +9,7 @@ use axum::{
         Json as ResponseJson, Sse,
         sse::{Event, KeepAlive},
     },
-    routing::{get, post},
+    routing::{get, post, delete},
 };
 use db::models::{
     execution_process::{ExecutionProcess, ExecutionProcessRunReason},
@@ -183,6 +183,8 @@ pub struct CreateTaskAttemptBody {
     /// Executor profile specification
     pub executor_profile_id: ExecutorProfileId,
     pub base_branch: String,
+    /// Optional: reuse branch and worktree from an existing attempt (same task)
+    pub reuse_branch_of_attempt_id: Option<Uuid>,
 }
 
 impl CreateTaskAttemptBody {
@@ -199,7 +201,7 @@ pub async fn create_task_attempt(
 ) -> Result<ResponseJson<ApiResponse<TaskAttempt>>, ApiError> {
     let executor_profile_id = payload.get_executor_profile_id();
 
-    let task_attempt = TaskAttempt::create(
+    let mut task_attempt = TaskAttempt::create(
         &deployment.db().pool,
         &CreateTaskAttempt {
             executor: executor_profile_id.executor,
@@ -208,6 +210,44 @@ pub async fn create_task_attempt(
         payload.task_id,
     )
     .await?;
+
+    // If requested, reuse branch and container/worktree from an existing attempt
+    if let Some(src_attempt_id) = payload.reuse_branch_of_attempt_id {
+        let pool = &deployment.db().pool;
+        let src = TaskAttempt::find_by_id(pool, src_attempt_id)
+            .await?
+            .ok_or(ApiError::TaskAttempt(TaskAttemptError::ValidationError(
+                "Source attempt not found".to_string(),
+            )))?;
+        if src.task_id != payload.task_id {
+            return Err(ApiError::TaskAttempt(TaskAttemptError::ValidationError(
+                "Source attempt belongs to a different task".to_string(),
+            )));
+        }
+        let branch = src
+            .branch
+            .clone()
+            .ok_or(ApiError::TaskAttempt(TaskAttemptError::ValidationError(
+                "Source attempt has no branch to reuse".to_string(),
+            )))?;
+        let container_ref = src
+            .container_ref
+            .clone()
+            .ok_or(ApiError::TaskAttempt(TaskAttemptError::ValidationError(
+                "Source attempt has no worktree to reuse".to_string(),
+            )))?;
+
+        // Persist the reused pointers into the new attempt
+        TaskAttempt::update_branch(pool, task_attempt.id, &branch).await?;
+        TaskAttempt::update_container_ref(pool, task_attempt.id, &container_ref).await?;
+        // Keep base_branch consistent with the source
+        TaskAttempt::update_base_branch(pool, task_attempt.id, &src.base_branch).await?;
+
+        // Reload the struct for downstream operations
+        task_attempt = TaskAttempt::find_by_id(pool, task_attempt.id)
+            .await?
+            .expect("attempt just created must exist");
+    }
 
     let execution_process = deployment
         .container()
@@ -1292,9 +1332,65 @@ pub async fn stop_task_attempt_execution(
     Ok(ResponseJson(ApiResponse::success(())))
 }
 
+/// Delete a task attempt.
+/// - Stops any running processes (best-effort)
+/// - Cleans up the worktree
+/// - Refuses deletion if the attempt has child tasks or associated merges/PRs
+#[axum::debug_handler]
+pub async fn delete_task_attempt(
+    Extension(task_attempt): Extension<TaskAttempt>,
+    State(deployment): State<DeploymentImpl>,
+) -> Result<ResponseJson<ApiResponse<()>>, ApiError> {
+    let pool = &deployment.db().pool;
+
+    // Disallow deletion if this attempt has child tasks pointing to it
+    let children_count = sqlx::query_scalar!(
+        r#"SELECT COUNT(1) as "count!: i64" FROM tasks WHERE parent_task_attempt = $1"#,
+        task_attempt.id
+    )
+    .fetch_one(pool)
+    .await?;
+    if children_count > 0 {
+        return Ok(ResponseJson(ApiResponse::error(
+            "Cannot delete this attempt because some tasks reference it as parent.",
+        )));
+    }
+
+    // Disallow deletion if merges/PRs exist for this attempt
+    let merges = Merge::find_by_task_attempt_id(pool, task_attempt.id).await?;
+    if !merges.is_empty() {
+        return Ok(ResponseJson(ApiResponse::error(
+            "Cannot delete an attempt that has merges or a pull request.",
+        )));
+    }
+
+    // Stop any running processes and cleanup worktree (best-effort)
+    let _ = deployment.container().delete(&task_attempt).await;
+
+    // Delete the attempt row (cascades will remove executions, logs, merges)
+    sqlx::query!(
+        "DELETE FROM task_attempts WHERE id = $1",
+        task_attempt.id
+    )
+    .execute(pool)
+    .await?;
+
+    deployment
+        .track_if_analytics_allowed(
+            "task_attempt_deleted",
+            serde_json::json!({
+                "attempt_id": task_attempt.id.to_string(),
+                "task_id": task_attempt.task_id.to_string(),
+            }),
+        )
+        .await;
+
+    Ok(ResponseJson(ApiResponse::success(())))
+}
+
 pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
     let task_attempt_id_router = Router::new()
-        .route("/", get(get_task_attempt))
+        .route("/", get(get_task_attempt).delete(delete_task_attempt))
         .route("/follow-up", post(follow_up))
         .route("/plan-to-issue", post(export_plan_to_issue))
         .route("/restore", post(restore_task_attempt))

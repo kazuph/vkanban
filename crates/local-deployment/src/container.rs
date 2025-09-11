@@ -725,6 +725,24 @@ impl ContainerService for LocalContainerService {
             .await?
             .ok_or(sqlx::Error::RowNotFound)?;
 
+        // If this attempt already has branch and container_ref set (e.g., branch reuse),
+        // just ensure the worktree exists and reuse it instead of creating a new branch/worktree.
+        if let (Some(existing_branch), Some(existing_container)) =
+            (task_attempt.branch.clone(), task_attempt.container_ref.clone())
+        {
+            let project = task
+                .parent_project(&self.db.pool)
+                .await?
+                .ok_or(sqlx::Error::RowNotFound)?;
+            WorktreeManager::ensure_worktree_exists(
+                &project.git_repo_path,
+                &existing_branch,
+                &PathBuf::from(&existing_container),
+            )
+            .await?;
+            return Ok(existing_container);
+        }
+
         let worktree_dir_name =
             LocalContainerService::dir_name_from_task_attempt(&task_attempt.id, &task.title);
         let worktree_path = WorktreeManager::get_worktree_base_dir().join(&worktree_dir_name);
