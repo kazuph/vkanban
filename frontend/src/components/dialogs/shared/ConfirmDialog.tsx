@@ -9,6 +9,7 @@ import {
 import { Button } from '@/components/ui/button';
 import NiceModal, { useModal } from '@ebay/nice-modal-react';
 import { AlertTriangle, Info, CheckCircle, XCircle } from 'lucide-react';
+import { useRef } from 'react';
 import type { ConfirmResult } from '@/lib/modals';
 
 export interface ConfirmDialogProps {
@@ -22,6 +23,7 @@ export interface ConfirmDialogProps {
 
 const ConfirmDialog = NiceModal.create<ConfirmDialogProps>((props) => {
   const modal = useModal();
+  const hasResolved = useRef(false);
   const {
     title,
     message,
@@ -32,11 +34,19 @@ const ConfirmDialog = NiceModal.create<ConfirmDialogProps>((props) => {
   } = props;
 
   const handleConfirm = () => {
-    modal.resolve('confirmed' as ConfirmResult);
+    if (!hasResolved.current) {
+      hasResolved.current = true;
+      modal.resolve('confirmed' as ConfirmResult);
+    }
+    modal.hide();
   };
 
   const handleCancel = () => {
-    modal.resolve('canceled' as ConfirmResult);
+    if (!hasResolved.current) {
+      hasResolved.current = true;
+      modal.resolve('canceled' as ConfirmResult);
+    }
+    modal.hide();
   };
 
   const getIcon = () => {
@@ -59,7 +69,19 @@ const ConfirmDialog = NiceModal.create<ConfirmDialogProps>((props) => {
   };
 
   return (
-    <Dialog open={modal.visible} onOpenChange={handleCancel}>
+    <Dialog
+      open={modal.visible}
+      // Ensure closing via ESC/backdrop also hides modal state and resolves once
+      onOpenChange={(open) => {
+        if (!open) {
+          if (!hasResolved.current) {
+            hasResolved.current = true;
+            modal.resolve('canceled' as ConfirmResult);
+          }
+          modal.hide();
+        }
+      }}
+    >
       <DialogContent className="sm:max-w-[425px]">
         <DialogHeader>
           <div className="flex items-center gap-3">
