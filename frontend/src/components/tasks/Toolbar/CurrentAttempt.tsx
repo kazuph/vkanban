@@ -453,7 +453,28 @@ function CurrentAttempt({
   return (
     <div className="space-y-2 @container">
       {/* <div className="flex gap-6 items-start"> */}
-      <div className="grid grid-cols-2 gap-3 items-start @md:flex @md:items-start">
+      <div className="relative grid grid-cols-2 gap-3 items-start @md:flex @md:items-start">
+        {/* Top-right delete icon only in fullscreen sidebar (when history is hidden) */}
+        {!showHistory && (
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="xs"
+                  onClick={handleDeleteAttempt}
+                  className="absolute right-0 -top-2 h-6 w-6 p-0 text-destructive hover:bg-destructive/10"
+                  title="Delete attempt"
+                >
+                  <Trash2 className="h-3 w-3" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Delete attempt</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        )}
         <div className="min-w-0">
           <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">
             Agent
@@ -804,15 +825,7 @@ function CurrentAttempt({
                 </DropdownMenuContent>
               </DropdownMenu>
             )}
-            <Button
-              variant="outline"
-              size="xs"
-              onClick={handleDeleteAttempt}
-              className="gap-1 border-destructive text-destructive hover:bg-destructive/10"
-            >
-              <Trash2 className="h-3 w-3" />
-              Delete
-            </Button>
+            {/* Delete button moved to top-right in fullscreen; removed from here */}
           </div>
         </div>
       </div>

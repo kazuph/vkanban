@@ -6,10 +6,13 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu.tsx';
-import { History } from 'lucide-react';
+import { History, Trash2 } from 'lucide-react';
 import type { TaskAttempt, TaskWithAttemptStatus } from 'shared/types';
 import { useDiffSummary } from '@/hooks/useDiffSummary';
 import { useAttemptExecution } from '@/hooks/useAttemptExecution';
+import { attemptsApi } from '@/lib/api';
+import { useQueryClient } from '@tanstack/react-query';
+import { showModal } from '@/lib/modals';
 
 interface AttemptHeaderCardProps {
   attemptNumber: number;
@@ -33,11 +36,13 @@ export function AttemptHeaderCard({
   // onCreateNewAttempt,
   onJumpToDiffFullScreen,
   onCreateNewAttempt,
+  task,
 }: AttemptHeaderCardProps) {
   const { fileCount, added, deleted } = useDiffSummary(
     selectedAttempt?.id ?? null
   );
   const { attemptData } = useAttemptExecution(selectedAttempt?.id ?? undefined);
+  const queryClient = useQueryClient();
 
   const agentLabel = (() => {
     const fallback = selectedAttempt?.executor || '';
@@ -68,6 +73,39 @@ export function AttemptHeaderCard({
     const execName = exec === 'CLAUDE_CODE' ? 'Claude Code' : exec;
     return setting ? `${execName}(${setting})` : execName;
   })();
+
+  const handleDeleteAttempt = async () => {
+    if (!selectedAttempt?.id || !task) return;
+    try {
+      const result = await showModal<'confirmed' | 'canceled'>(
+        'confirm',
+        {
+          title: 'Delete this attempt?',
+          message:
+            'This will stop any running processes, remove its workspace, and delete its history. This action cannot be undone.',
+          confirmText: 'Delete',
+          cancelText: 'Cancel',
+          variant: 'destructive',
+        }
+      );
+      if (result !== 'confirmed') return;
+
+      const deletingId = selectedAttempt.id;
+      const fallback = attempts.find((a) => a.id !== deletingId) || null;
+
+      await attemptsApi.delete(deletingId);
+      queryClient.invalidateQueries({ queryKey: ['taskAttempts', task.id] });
+
+      if (fallback) {
+        setSelectedAttempt?.(fallback);
+      } else {
+        // No attempts left, let parent decide UI (create attempt mode, etc.)
+      }
+    } catch (e) {
+      // Swallow errors here; TaskDetailsToolbar shows errors where relevant
+      console.error('Failed to delete attempt:', e);
+    }
+  };
 
   return (
     <Card className="border-b border-dashed bg-background flex items-center text-sm">
@@ -138,7 +176,19 @@ export function AttemptHeaderCard({
           )}
         </div>
       
-        <div className="pr-3">
+        <div className="pr-3 flex items-center gap-2">
+          {selectedAttempt && (
+            <Button
+              variant="destructive"
+              size="xs"
+              onClick={handleDeleteAttempt}
+              className="gap-1"
+              title="Delete current attempt"
+            >
+              <Trash2 className="h-3 w-3" />
+              Delete
+            </Button>
+          )}
           {onCreateNewAttempt && (
             <Button
               variant="outline"
