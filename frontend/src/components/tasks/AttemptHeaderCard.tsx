@@ -1,5 +1,12 @@
 import { Card } from '../ui/card';
 import { Button } from '../ui/button';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu.tsx';
+import { History } from 'lucide-react';
 import type { TaskAttempt, TaskWithAttemptStatus } from 'shared/types';
 import { useDiffSummary } from '@/hooks/useDiffSummary';
 import { useAttemptExecution } from '@/hooks/useAttemptExecution';
@@ -8,6 +15,8 @@ interface AttemptHeaderCardProps {
   attemptNumber: number;
   totalAttempts: number;
   selectedAttempt: TaskAttempt | null;
+  attempts?: TaskAttempt[];
+  setSelectedAttempt?: (attempt: TaskAttempt | null) => void;
   task?: TaskWithAttemptStatus; // unused (actions moved)
   projectId?: string; // unused (actions moved)
   // onCreateNewAttempt?: () => void;
@@ -19,6 +28,8 @@ export function AttemptHeaderCard({
   attemptNumber,
   totalAttempts,
   selectedAttempt,
+  attempts = [],
+  setSelectedAttempt,
   // onCreateNewAttempt,
   onJumpToDiffFullScreen,
   onCreateNewAttempt,
@@ -60,47 +71,85 @@ export function AttemptHeaderCard({
 
   return (
     <Card className="border-b border-dashed bg-background flex items-center text-sm">
-      <div className="flex-1 flex gap-6 p-3">
-        <p>
-          <span className="text-secondary-foreground">Attempt &middot; </span>
-          {attemptNumber}/{totalAttempts}
-        </p>
-        <p>
-          <span className="text-secondary-foreground">Agent &middot; </span>
-          {agentLabel}
-        </p>
-        {selectedAttempt?.branch && (
-          <p className="max-w-30">
-            <span className="text-secondary-foreground">Branch &middot; </span>
-            {selectedAttempt.branch}
-          </p>
-        )}
-        {fileCount > 0 && (
-          <p className="text-secondary-foreground">
+      <div className="flex items-center gap-2 p-3 w-full">
+        {/* Attempt history (left edge) */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
             <Button
               variant="ghost"
-              size="sm"
-              className="h-4 p-0"
-              onClick={onJumpToDiffFullScreen}
+              size="xs"
+              className="h-6 w-6 p-0"
+              disabled={attempts.length <= 1}
+              title={attempts.length > 1 ? 'Switch attempt' : 'No other attempts'}
             >
-              Diffs
-            </Button>{' '}
-            &middot; <span className="text-success">+{added}</span>{' '}
-            <span className="text-destructive">-{deleted}</span>
+              <History className="h-4 w-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="w-64">
+            {attempts.map((attempt) => (
+              <DropdownMenuItem
+                key={attempt.id}
+                onClick={() => setSelectedAttempt?.(attempt)}
+                className={selectedAttempt?.id === attempt.id ? 'bg-accent' : ''}
+              >
+                <div className="flex flex-col w-full">
+                  <span className="font-medium text-sm">
+                    {new Date(attempt.created_at).toLocaleDateString()}{' '}
+                    {new Date(attempt.created_at).toLocaleTimeString()}
+                  </span>
+                  <span className="text-xs text-muted-foreground">
+                    {attempt.executor || 'Base Agent'}
+                  </span>
+                </div>
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
+
+        {/* Attempt summary */}
+        <div className="flex-1 flex gap-6">
+          <p>
+            <span className="text-secondary-foreground">Attempt &middot; </span>
+            {attemptNumber}/{totalAttempts}
           </p>
-        )}
-      </div>
-      <div className="pr-3">
-        {onCreateNewAttempt && (
-          <Button
-            variant="outline"
-            size="xs"
-            onClick={onCreateNewAttempt}
-            className="gap-1"
-          >
-            New Attempt
-          </Button>
-        )}
+          <p>
+            <span className="text-secondary-foreground">Agent &middot; </span>
+            {agentLabel}
+          </p>
+          {selectedAttempt?.branch && (
+            <p className="max-w-30">
+              <span className="text-secondary-foreground">Branch &middot; </span>
+              {selectedAttempt.branch}
+            </p>
+          )}
+          {fileCount > 0 && (
+            <p className="text-secondary-foreground">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-4 p-0"
+                onClick={onJumpToDiffFullScreen}
+              >
+                Diffs
+              </Button>{' '}
+              &middot; <span className="text-success">+{added}</span>{' '}
+              <span className="text-destructive">-{deleted}</span>
+            </p>
+          )}
+        </div>
+      
+        <div className="pr-3">
+          {onCreateNewAttempt && (
+            <Button
+              variant="outline"
+              size="xs"
+              onClick={onCreateNewAttempt}
+              className="gap-1"
+            >
+              New Attempt
+            </Button>
+          )}
+        </div>
       </div>
     </Card>
   );

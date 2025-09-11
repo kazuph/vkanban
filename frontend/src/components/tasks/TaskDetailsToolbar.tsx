@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useReducer, useState } from 'react';
-import { Play } from 'lucide-react';
+import { Play, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useProjectBranches } from '@/hooks/useProjectBranches';
 import type {
@@ -16,6 +16,7 @@ import CreateAttempt from '@/components/tasks/Toolbar/CreateAttempt.tsx';
 import CurrentAttempt from '@/components/tasks/Toolbar/CurrentAttempt.tsx';
 import { useUserSystem } from '@/components/config-provider';
 import { Card } from '../ui/card';
+import { AttemptList as AttemptListComp } from './AttemptList';
 
 // UI State Management
 type UiAction =
@@ -71,6 +72,7 @@ function TaskDetailsToolbar({
   attempts,
   selectedAttempt,
   setSelectedAttempt,
+  showAttemptList = false,
 }: {
   task: TaskWithAttemptStatus;
   projectId: string;
@@ -80,6 +82,7 @@ function TaskDetailsToolbar({
   attempts: TaskAttempt[];
   selectedAttempt: TaskAttempt | null;
   setSelectedAttempt: (attempt: TaskAttempt | null) => void;
+  showAttemptList?: boolean;
 }) {
   // Use props instead of context
   const taskAttempts = attempts;
@@ -201,25 +204,50 @@ function TaskDetailsToolbar({
         ) : (
           <div className="">
             <Card className="bg-background border-y border-dashed p-3 text-sm">
-              Actions
+              <div className="flex items-center justify-between">
+                <div>Actions</div>
+                <Button
+                  onClick={handleEnterCreateAttemptMode}
+                  size="xs"
+                  variant="outline"
+                  className="gap-1"
+                  disabled={isAttemptRunning || isStopping}
+                >
+                  <Plus className="h-3 w-3" />
+                  New Attempt
+                </Button>
+              </div>
             </Card>
+            {showAttemptList && (
+              <div className="px-3">
+                {attempts.length > 0 && (
+                  <AttemptListComp
+                    attempts={taskAttempts}
+                    selectedAttempt={selectedAttempt}
+                    onSelect={(a) => setSelectedAttempt(a)}
+                  />
+                )}
+              </div>
+            )}
             <div className="p-3">
               {/* Current Attempt Info */}
               <div className="space-y-2">
                 {selectedAttempt ? (
-                  <CurrentAttempt
-                    task={task}
-                    projectId={projectId}
-                    projectHasDevScript={projectHasDevScript ?? false}
-                    selectedAttempt={selectedAttempt}
-                    taskAttempts={taskAttempts}
-                    selectedBranch={selectedBranch}
-                    setError={setError}
-                    creatingPR={ui.creatingPR}
-                    handleEnterCreateAttemptMode={handleEnterCreateAttemptMode}
-                    branches={branches}
-                    setSelectedAttempt={setSelectedAttempt}
-                  />
+                    <CurrentAttempt
+                      task={task}
+                      projectId={projectId}
+                      projectHasDevScript={projectHasDevScript ?? false}
+                      selectedAttempt={selectedAttempt}
+                      taskAttempts={taskAttempts}
+                      selectedBranch={selectedBranch}
+                      setError={setError}
+                      creatingPR={ui.creatingPR}
+                      handleEnterCreateAttemptMode={handleEnterCreateAttemptMode}
+                      branches={branches}
+                      setSelectedAttempt={setSelectedAttempt}
+                      showHistory={showAttemptList ? false : true}
+                      showNewAttemptInCard={false}
+                    />
                 ) : (
                   <div className="text-center py-8">
                     <div className="text-lg font-medium text-muted-foreground">

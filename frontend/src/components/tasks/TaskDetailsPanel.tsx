@@ -156,6 +156,7 @@ export function TaskDetailsPanel({
                         attempts={attempts}
                         selectedAttempt={selectedAttempt}
                         setSelectedAttempt={setSelectedAttempt}
+                        showAttemptList
                         // hide actions in sidebar; moved to header in fullscreen
                       />
 
@@ -212,13 +213,15 @@ export function TaskDetailsPanel({
                           attemptNumber={attemptNumber}
                           totalAttempts={attempts.length}
                           selectedAttempt={selectedAttempt}
+                          attempts={attempts}
+                          setSelectedAttempt={setSelectedAttempt}
                           task={task}
                           projectId={projectId}
                           onJumpToDiffFullScreen={jumpToDiffFullScreen}
                           onCreateNewAttempt={() => setForceCreateLocal(true)}
                         />
 
-                        <div className="flex-1 min-h-0">
+                        <div className="flex-1 min-h-0 overflow-hidden">
                           <LogsTab selectedAttempt={selectedAttempt} />
                         </div>
 
