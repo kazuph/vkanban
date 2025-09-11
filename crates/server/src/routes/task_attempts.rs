@@ -217,6 +217,48 @@ pub async fn create_task_attempt(
     )
     .await?;
 
+    // Soft-lock: If no explicit reuse source is provided, try to reuse the latest
+    // existing attempt's branch/worktree for the same task. This keeps
+    // "1 task = 1 branch" as the default developer experience without a hard DB constraint.
+    if payload.reuse_branch_of_attempt_id.is_none() {
+        let pool = &deployment.db().pool;
+        // Newest first
+        let existing_attempts = TaskAttempt::fetch_all(pool, Some(payload.task_id)).await?;
+        if let Some(src) = existing_attempts
+            .into_iter()
+            .find(|a| {
+                a.id != task_attempt.id
+                    && !a.worktree_deleted
+                    && a.branch.is_some()
+                    && a.container_ref.is_some()
+            })
+        {
+            let branch = src.branch.as_ref().expect("checked is_some");
+            let container_ref = src
+                .container_ref
+                .as_ref()
+                .expect("checked is_some");
+
+            // Persist the reused pointers into the new attempt
+            TaskAttempt::update_branch(pool, task_attempt.id, branch).await?;
+            TaskAttempt::update_container_ref(pool, task_attempt.id, container_ref).await?;
+            // Keep base_branch consistent with the source (important for diffs/PR base)
+            TaskAttempt::update_base_branch(pool, task_attempt.id, &src.base_branch).await?;
+
+            // Reload for downstream operations
+            task_attempt = TaskAttempt::find_by_id(pool, task_attempt.id)
+                .await?
+                .expect("attempt just created must exist");
+
+            tracing::info!(
+                "Soft-lock: reused branch '{}' and worktree for new attempt {} (task {})",
+                branch,
+                task_attempt.id,
+                task_attempt.task_id
+            );
+        }
+    }
+
     // If requested, reuse branch and container/worktree from an existing attempt
     if let Some(src_attempt_id) = payload.reuse_branch_of_attempt_id {
         let pool = &deployment.db().pool;
@@ -1018,6 +1060,117 @@ pub async fn create_github_pr(
     }
 }
 
+/// Open an existing GitHub PR for this attempt if one exists.
+///
+/// Behavior:
+/// 1) If an open PR is already recorded in the DB for this attempt, open it in the browser and return its URL.
+/// 2) Otherwise, best-effort scan GitHub for an open PR for the attempt branch. If found, record it in DB, open it, and return its URL.
+/// 3) If none is found (or token is unavailable), return a Result-style ApiResponse with success=false and a message.
+#[axum::debug_handler]
+pub async fn open_existing_github_pr(
+    Extension(task_attempt): Extension<TaskAttempt>,
+    State(deployment): State<DeploymentImpl>,
+) -> Result<ResponseJson<ApiResponse<String, GitHubServiceError>>, ApiError> {
+    let pool = &deployment.db().pool;
+
+    // Load context needed to resolve repo and project
+    let task = task_attempt
+        .parent_task(pool)
+        .await?
+        .ok_or(ApiError::TaskAttempt(TaskAttemptError::TaskNotFound))?;
+    let project = Project::find_by_id(pool, task.project_id)
+        .await?
+        .ok_or(ApiError::Project(ProjectError::ProjectNotFound))?;
+
+    // Branch name for this attempt
+    let branch_name = task_attempt.branch.as_ref().ok_or_else(|| {
+        ApiError::TaskAttempt(TaskAttemptError::ValidationError(
+            "No branch found for task attempt".to_string(),
+        ))
+    })?;
+
+    // (1) If DB already knows an open PR, open and return it immediately
+    if let Ok(merges) = Merge::find_by_task_attempt_id(pool, task_attempt.id).await {
+        if let Some(existing_open) = merges.into_iter().find_map(|m| match m {
+            Merge::Pr(pr) if matches!(pr.pr_info.status, MergeStatus::Open) => Some(pr),
+            _ => None,
+        }) {
+            let url = existing_open.pr_info.url.clone();
+            let pr_url = url.clone();
+            tokio::spawn(async move {
+                if let Err(e) = open_browser(&pr_url).await {
+                    tracing::debug!("Failed to open PR in browser (ignored): {}", e);
+                }
+            });
+            return Ok(ResponseJson(ApiResponse::success(url)));
+        }
+    }
+
+    // Best-effort: if we have a valid token, query GitHub for an existing open PR
+    let github_config = deployment.config().read().await.github.clone();
+    if let Some(github_token) = github_config.token() {
+        let github_service = GitHubService::new(&github_token)?;
+        if let Err(e) = github_service.check_token().await {
+            // If token invalid, just fall through and return not-found semantics
+            if !e.is_api_data() {
+                // Non-API error (e.g., network) -> surface as server error
+                return Err(ApiError::GitHubService(e));
+            }
+        } else {
+            let repo_info = deployment
+                .git()
+                .get_github_repo_info(&project.git_repo_path)?;
+
+            if let Some((pr_info, base_detected)) = github_service
+                .find_open_pr_for_branch(&repo_info, branch_name, None)
+                .await
+                .map_err(ApiError::GitHubService)?
+            {
+                let target_base = if !base_detected.trim().is_empty() {
+                    base_detected
+                } else {
+                    task_attempt.base_branch.clone()
+                };
+                if let Err(e) = Merge::create_pr(
+                    pool,
+                    task_attempt.id,
+                    &target_base,
+                    pr_info.number,
+                    &pr_info.url,
+                )
+                .await
+                {
+                    tracing::error!("Failed to record existing PR in DB: {}", e);
+                }
+
+                deployment
+                    .track_if_analytics_allowed(
+                        "github_pr_linked_existing",
+                        serde_json::json!({
+                            "task_id": task.id.to_string(),
+                            "project_id": project.id.to_string(),
+                            "attempt_id": task_attempt.id.to_string(),
+                        }),
+                    )
+                    .await;
+
+                let pr_url = pr_info.url.clone();
+                tokio::spawn(async move {
+                    if let Err(e) = open_browser(&pr_url).await {
+                        tracing::debug!("Failed to open PR in browser (ignored): {}", e);
+                    }
+                });
+                return Ok(ResponseJson(ApiResponse::success(pr_info.url)));
+            }
+        }
+    }
+
+    // Not found or cannot check. Return a result-like error; frontend will open the dialog.
+    Ok(ResponseJson(ApiResponse::error(
+        "No existing PR found for this attempt",
+    )))
+}
+
 #[derive(serde::Deserialize)]
 pub struct OpenEditorRequest {
     editor_type: Option<String>,
@@ -1473,6 +1626,7 @@ pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
         .route("/merge", post(merge_task_attempt))
         .route("/push", post(push_task_attempt_branch))
         .route("/rebase", post(rebase_task_attempt))
+        .route("/pr/open-existing", post(open_existing_github_pr))
         .route("/pr", post(create_github_pr))
         .route("/open-editor", post(open_task_attempt_in_editor))
         .route("/delete-file", post(delete_task_attempt_file))
