@@ -211,6 +211,8 @@ export function ProjectTasks() {
       if (!isPanelOpen) return;
       // In fullscreen, a backdrop already covers the rest; keep default behavior
       if (isFullscreen) return;
+      // Keep parameter to satisfy handler type; mark as intentionally unused
+      void e;
       handleClosePanel();
     },
     [isPanelOpen, isFullscreen, handleClosePanel]
