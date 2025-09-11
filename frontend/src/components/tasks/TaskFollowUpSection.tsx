@@ -104,7 +104,7 @@ export function TaskFollowUpSection({
     'default' | 'low' | 'medium' | 'high' | 'custom'
   >('high');
   const [codexCustomModel, setCodexCustomModel] = useState<string>('');
-  const [claudeModel, setClaudeModel] = useState<'default' | 'sonnet' | 'opus'>('default');
+  const [claudeModel, setClaudeModel] = useState<'default' | 'sonnet' | 'opus'>('sonnet');
 
   // NOTE: base executor now selected via selectedBaseExecutor
 
