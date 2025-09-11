@@ -2,6 +2,12 @@
 
 このリポジトリの運用ノウハウ（簡潔版）。
 
+## Git/PR Workflow (Default)
+- Commit in small, implementation-scoped chunks, split by intent, and push after each cohesive change.
+- If no PR exists, create one with the gh CLI; if a PR already exists, open it with `gh pr view --web`. Use Japanese for the PR title and description.
+- When a task is completed, always leave the PR open in the browser using the command above.
+- Reviews and CI tests run on the PR; address only important items, and if tests fail, fix them and push again.
+
 ## Docker/Compose
 
 - 起動: `make run`
