@@ -30,17 +30,18 @@
     "test:e2e:headed": "E2E_HEADLESS=false PLAYWRIGHT_BROWSERS_PATH=.playwright-browsers playwright test"
   },
   "devDependencies": {
+    "@mizchi/lsmcp": "^0.10.0-rc.6",
+    "@playwright/test": "^1.48.0",
     "@tailwindcss/container-queries": "^0.1.1",
+    "@typescript/native-preview": "^7.0.0-dev.20250910.1",
     "concurrently": "^8.2.2",
-    "vite": "^6.3.5",
-    "@playwright/test": "^1.48.0"
-  },
-  "dependencies": {},
-  "engines": {
-    "node": ">=18",
-    "pnpm": ">=8"
+    "vite": "^6.3.5"
   },
   "dependencies": {
     "@ebay/nice-modal-react": "^1.2.13"
+  },
+  "engines": {
+    "node": ">=18",
+    "pnpm": ">=8"
   }
 }

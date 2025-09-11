@@ -92,3 +92,6 @@ test-results/
 .pnpm-store/
 data/
 var_tmp_vkanban/
+
+# lsmcp cache
+.lsmcp/cache
