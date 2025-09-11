@@ -14,16 +14,25 @@ export function useAttemptCreation(taskId: string) {
       profile,
       baseBranch,
       reuseBranchAttemptId,
+      initialInstructions,
+      codexModelOverride,
+      claudeModelOverride,
     }: {
       profile: ExecutorProfileId;
       baseBranch: string;
       reuseBranchAttemptId?: string | null;
+      initialInstructions?: string | null;
+      codexModelOverride?: string | null;
+      claudeModelOverride?: string | null;
     }) =>
       attemptsApi.create({
         task_id: taskId,
         executor_profile_id: profile,
         base_branch: baseBranch,
         reuse_branch_of_attempt_id: reuseBranchAttemptId ?? null,
+        initial_instructions: initialInstructions ?? null,
+        codex_model_override: codexModelOverride ?? null,
+        claude_model_override: claudeModelOverride ?? null,
       }),
     onSuccess: (newAttempt: TaskAttempt) => {
       // Optimistically add to cache to prevent UI flicker

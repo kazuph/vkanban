@@ -17,7 +17,7 @@ import { useKeyboardShortcuts } from '@/lib/keyboard-shortcuts.ts';
 import { showModal } from '@/lib/modals';
 import { Card } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
-import { attemptsApi } from '@/lib/api';
+import { attemptsApi, executionProcessesApi } from '@/lib/api';
 
 type Props = {
   task: Task;
@@ -58,6 +58,42 @@ function CreateAttempt({
   // Create attempt logic
   const actuallyCreateAttempt = useCallback(
     async (profile: ExecutorProfileId) => {
+      // Before creating a new attempt, ensure no other attempts for this task are running.
+      // This prevents multiple attempts for the same task running concurrently.
+      try {
+        const runningAttemptIds: string[] = [];
+        await Promise.all(
+          taskAttempts.map(async (a) => {
+            try {
+              const processes = await executionProcessesApi.getExecutionProcesses(a.id);
+              const isRunning = processes.some(
+                (p) =>
+                  (p.run_reason === 'codingagent' ||
+                    p.run_reason === 'setupscript' ||
+                    p.run_reason === 'cleanupscript') &&
+                  p.status === 'running'
+              );
+              if (isRunning) runningAttemptIds.push(a.id);
+            } catch (e) {
+              // Ignore fetch errors for non-selected attempts; proceed best-effort
+            }
+          })
+        );
+
+        // Stop all running attempts (best-effort)
+        await Promise.all(
+          runningAttemptIds.map(async (id) => {
+            try {
+              await attemptsApi.stop(id);
+            } catch (e) {
+              // Ignore errors (e.g., already stopped) to avoid blocking creation
+            }
+          })
+        );
+      } catch (e) {
+        // Non-fatal; continue creating the new attempt
+      }
+
       // Default base branch should be the branch already used by this task
       const latestAttempt = selectedAttempt
         ? selectedAttempt
@@ -76,47 +112,34 @@ function CreateAttempt({
       const effectiveBaseBranch =
         selectedBranch || existingTaskBranch || latestAttempt?.base_branch || currentGitBranch;
 
+      const prompt = initialPrompt.trim();
+      const isCodex = (profile as any).executor === 'CODEX';
+      const codex_model_override = isCodex
+        ? codexReasoning === 'custom'
+          ? codexCustomModel.trim() || null
+          : codexReasoning === 'high'
+            ? 'gpt-5'
+            : codexReasoning === 'medium'
+              ? 'codex-mini-latest'
+              : codexReasoning === 'low'
+                ? 'o4-mini'
+                : null
+        : null;
+      const isClaude = (profile as any).executor === 'CLAUDE_CODE';
+
       const newAttempt = await createAttempt({
         profile,
         baseBranch: effectiveBaseBranch,
         reuseBranchAttemptId:
           reuseBranch && selectedAttempt?.branch ? (selectedAttempt.id as string) : undefined,
+        initialInstructions: prompt || null,
+        codexModelOverride: codex_model_override as any,
+        claudeModelOverride: isClaude
+          ? ((claudeModel === 'default' ? null : (claudeModel as string)) as any)
+          : null,
       });
-
-      // Send the initial prompt immediately as the first follow-up
-      const prompt = initialPrompt.trim();
-      if (prompt) {
-        const isCodex = (profile as any).executor === 'CODEX';
-        const codex_model_override = isCodex
-          ? codexReasoning === 'custom'
-            ? codexCustomModel.trim() || null
-            : codexReasoning === 'high'
-              ? 'gpt-5'
-              : codexReasoning === 'medium'
-                ? 'codex-mini-latest'
-                : codexReasoning === 'low'
-                  ? 'o4-mini'
-                  : null
-          : null;
-        try {
-          const isClaude = (profile as any).executor === 'CLAUDE_CODE';
-          await attemptsApi.followUp(newAttempt.id, {
-            prompt,
-            variant: (profile as any).variant ?? null,
-            image_ids: null,
-            executor_profile_id: profile as any,
-            codex_model_override: (codex_model_override as string | null),
-            claude_model_override: isClaude
-              ? (claudeModel === 'default' ? null : (claudeModel as string))
-              : null,
-          });
-        } catch (e) {
-          // Non-fatal: attempt is created; surface error via console
-          console.error('Failed to send initial prompt follow-up:', e);
-        }
-      }
     },
-    [createAttempt, selectedBranch, initialPrompt]
+    [createAttempt, selectedBranch, initialPrompt, codexReasoning, codexCustomModel, claudeModel]
   );
 
   // Handler for Enter key or Start button
@@ -428,22 +451,16 @@ function CreateAttempt({
             </div>
           )}
 
-          {/* Step 4: Initial Instructions (required) */}
+          {/* Step 4: Prompt */}
           <div className="space-y-1 sm:col-span-2 pt-1 border-t">
             <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-              Instructions
+              Prompt
             </div>
-            <div className="flex items-center gap-1.5">
-              <label className="text-xs font-medium text-muted-foreground">
-                Initial Instructions
-              </label>
-              <span className="text-[10px] text-destructive">(required)</span>
-            </div>
-            
+
             <Textarea
               value={initialPrompt}
               onChange={(e) => setInitialPrompt(e.target.value)}
-              placeholder="Describe what the agent should do first..."
+              placeholder="Describe the main request for the agent..."
               className="w-full text-xs px-2 py-2 border-input"
               rows={4}
             />
