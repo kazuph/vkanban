@@ -16,12 +16,13 @@ use db::models::{
 };
 use deployment::Deployment;
 use futures_util::TryStreamExt;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use services::services::container::{
     ContainerService, WorktreeCleanupData, cleanup_worktrees_direct,
 };
 use sqlx::Error as SqlxError;
 use utils::response::ApiResponse;
+use ts_rs::TS;
 use uuid::Uuid;
 
 use crate::{DeploymentImpl, error::ApiError, middleware::load_task_middleware};
@@ -40,6 +41,64 @@ pub async fn get_tasks(
             .await?;
 
     Ok(ResponseJson(ApiResponse::success(tasks)))
+}
+
+#[derive(Debug, Serialize, TS)]
+#[ts(export)]
+pub struct TaskPrStatus {
+    pub task_id: Uuid,
+    pub has_open_pr: bool,
+    pub open_pr_url: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct TaskPrStatusQuery {
+    pub project_id: Uuid,
+}
+
+/// Return PR-open status per task in the project without loading heavy attempt details.
+pub async fn get_tasks_pr_status(
+    State(deployment): State<DeploymentImpl>,
+    Query(query): Query<TaskPrStatusQuery>,
+) -> Result<ResponseJson<ApiResponse<Vec<TaskPrStatus>>>, ApiError> {
+    let records = sqlx::query!(
+        r#"SELECT
+            t.id AS "task_id!: Uuid",
+            CASE WHEN EXISTS (
+                SELECT 1
+                  FROM task_attempts ta
+                  JOIN merges m ON m.task_attempt_id = ta.id
+                 WHERE ta.task_id = t.id
+                   AND m.merge_type = 'pr'
+                   AND m.pr_status = 'open'
+                 LIMIT 1
+            ) THEN 1 ELSE 0 END AS "has_open_pr!: i64",
+            (SELECT m.pr_url
+               FROM task_attempts ta
+               JOIN merges m ON m.task_attempt_id = ta.id
+              WHERE ta.task_id = t.id
+                AND m.merge_type = 'pr'
+                AND m.pr_status = 'open'
+              ORDER BY m.created_at DESC
+              LIMIT 1
+            ) as "open_pr_url: String"
+          FROM tasks t
+         WHERE t.project_id = $1"#,
+        query.project_id
+    )
+    .fetch_all(&deployment.db().pool)
+    .await?;
+
+    let data = records
+        .into_iter()
+        .map(|r| TaskPrStatus {
+            task_id: r.task_id,
+            has_open_pr: r.has_open_pr != 0,
+            open_pr_url: r.open_pr_url,
+        })
+        .collect::<Vec<_>>();
+
+    Ok(ResponseJson(ApiResponse::success(data)))
 }
 
 pub async fn stream_tasks(
@@ -177,6 +236,8 @@ pub async fn create_task_and_start(
         updated_at: task.updated_at,
         has_in_progress_attempt: true,
         has_merged_attempt: false,
+        has_open_pr: false,
+        open_pr_url: None,
         last_attempt_failed: false,
         executor: task_attempt.executor,
     })))
@@ -296,6 +357,7 @@ pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
 
     let inner = Router::new()
         .route("/", get(get_tasks).post(create_task))
+        .route("/pr-status", get(get_tasks_pr_status))
         .route("/stream", get(stream_tasks))
         .route("/create-and-start", post(create_task_and_start))
         .nest("/{task_id}", task_id_router);

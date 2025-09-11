@@ -41,6 +41,10 @@ pub struct TaskWithAttemptStatus {
     pub updated_at: DateTime<Utc>,
     pub has_in_progress_attempt: bool,
     pub has_merged_attempt: bool,
+    /// True if any attempt of this task has an open PR recorded in `merges`
+    pub has_open_pr: bool,
+    /// Most recent open PR URL for this task (if any)
+    pub open_pr_url: Option<String>,
     pub last_attempt_failed: bool,
     pub executor: String,
 }
@@ -102,6 +106,20 @@ impl Task {
      LIMIT 1
   ) THEN 1 ELSE 0 END            AS "has_in_progress_attempt!: i64",
   
+  -- Any merged outcome (direct merge OR PR merged)
+  CASE WHEN EXISTS (
+    SELECT 1
+      FROM task_attempts ta
+      JOIN merges m
+        ON m.task_attempt_id = ta.id
+     WHERE ta.task_id = t.id
+       AND (
+         m.merge_type = 'direct'
+         OR (m.merge_type = 'pr' AND m.pr_status = 'merged')
+       )
+     LIMIT 1
+  ) THEN 1 ELSE 0 END            AS "has_merged_attempt!: i64",
+
   CASE WHEN (
     SELECT ep.status
       FROM task_attempts ta
@@ -113,6 +131,31 @@ impl Task {
      LIMIT 1
   ) IN ('failed','killed') THEN 1 ELSE 0 END
                                  AS "last_attempt_failed!: i64",
+
+  -- Is there any open PR for one of the attempts?
+  CASE WHEN EXISTS (
+    SELECT 1
+      FROM task_attempts ta
+      JOIN merges m
+        ON m.task_attempt_id = ta.id
+     WHERE ta.task_id = t.id
+       AND m.merge_type = 'pr'
+       AND m.pr_status = 'open'
+     LIMIT 1
+  ) THEN 1 ELSE 0 END            AS "has_open_pr!: i64",
+
+  -- Return the most recent open PR URL for convenience
+  (
+    SELECT m.pr_url
+      FROM task_attempts ta
+      JOIN merges m
+        ON m.task_attempt_id = ta.id
+     WHERE ta.task_id = t.id
+       AND m.merge_type = 'pr'
+       AND m.pr_status = 'open'
+     ORDER BY m.created_at DESC
+     LIMIT 1
+  )                               AS "open_pr_url: String",
 
   ( SELECT ta.executor
       FROM task_attempts ta
@@ -141,7 +184,9 @@ ORDER BY t.created_at DESC"#,
                 created_at: rec.created_at,
                 updated_at: rec.updated_at,
                 has_in_progress_attempt: rec.has_in_progress_attempt != 0,
-                has_merged_attempt: false, // TODO use merges table
+                has_merged_attempt: rec.has_merged_attempt != 0,
+                has_open_pr: rec.has_open_pr != 0,
+                open_pr_url: rec.open_pr_url,
                 last_attempt_failed: rec.last_attempt_failed != 0,
                 executor: rec.executor,
             })
