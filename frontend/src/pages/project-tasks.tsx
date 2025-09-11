@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState, useMemo } from 'react';
+import type { MouseEvent as ReactMouseEvent } from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -204,6 +205,20 @@ export function ProjectTasks() {
     [tasksById]
   );
 
+  // Close details when clicking anywhere on the kanban area (outside the panel)
+  const handleKanbanAreaClickToClose = useCallback(
+    (e: ReactMouseEvent) => {
+      if (!isPanelOpen) return;
+      // In fullscreen, a backdrop already covers the rest; keep default behavior
+      if (isFullscreen) return;
+      // Prevent underlying card/list click handlers from firing (so it only closes)
+      e.stopPropagation();
+      e.preventDefault();
+      handleClosePanel();
+    },
+    [isPanelOpen, isFullscreen, handleClosePanel]
+  );
+
   // Setup keyboard shortcuts
   useKeyboardShortcuts({
     navigate,
@@ -289,7 +304,10 @@ export function ProjectTasks() {
               </Card>
             </div>
           ) : (
-            <div className="w-full h-full overflow-x-auto">
+            <div
+              className="w-full h-full overflow-x-auto"
+              onClickCapture={handleKanbanAreaClickToClose}
+            >
               <TaskKanbanBoard
                 tasks={tasks}
                 searchQuery={searchQuery}
