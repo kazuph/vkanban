@@ -30,6 +30,7 @@ import { useMerge } from '@/hooks/useMerge';
 import NiceModal from '@ebay/nice-modal-react';
 import { attemptsApi } from '@/lib/api';
 import { useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 
 interface TaskDetailsHeaderProps {
   task: TaskWithAttemptStatus;
@@ -65,6 +66,18 @@ function TaskDetailsHeader({
   const rebaseMutation = useRebase(selectedAttempt?.id, projectId);
   const mergeMutation = useMerge(selectedAttempt?.id);
   const queryClient = useQueryClient();
+  const { data: branchStatus } = useQuery({
+    queryKey: ['branchStatus', selectedAttempt?.id],
+    queryFn: ({ signal }) =>
+      selectedAttempt?.id
+        ? attemptsApi.getBranchStatus(selectedAttempt.id, signal)
+        : Promise.resolve(null as any),
+    enabled: !!selectedAttempt?.id,
+    refetchInterval: 5000,
+  });
+  const hasOpenPR = !!branchStatus?.merges?.some(
+    (m: any) => m.type === 'pr' && m.pr_info?.status === 'open'
+  );
 
   const handleCreatePR = useCallback(async () => {
     if (!selectedAttempt || !projectId) return;
@@ -211,13 +224,13 @@ function TaskDetailsHeader({
                   size="icon"
                   onClick={handleCreatePR}
                   disabled={!selectedAttempt}
-                  aria-label="Create PR"
+                  aria-label={hasOpenPR ? 'Open PR' : 'Create PR'}
                 >
                   <GitPullRequest className="h-4 w-4" />
                 </Button>
               </TooltipTrigger>
               <TooltipContent>
-                <p>Create PR</p>
+                <p>{hasOpenPR ? 'Open PR' : 'Create PR'}</p>
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
