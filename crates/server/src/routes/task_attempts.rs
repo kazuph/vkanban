@@ -999,6 +999,20 @@ pub async fn create_github_pr(
     } else {
         base_branch
     };
+
+    // Preflight: if there are no commits ahead of base, GitHub will 422 (Validation Failed).
+    // Provide a clearer message to the user instead.
+    if let Ok((commits_ahead, _behind)) = deployment.git().get_branch_status(
+        &project.git_repo_path,
+        branch_name,
+        &norm_base_branch_name,
+    ) {
+        if commits_ahead == 0 {
+            return Ok(ResponseJson(ApiResponse::error(
+                "No changes between head and base; commit changes before creating a PR.",
+            )));
+        }
+    }
     // Create the PR using GitHub service
     let pr_request = CreatePrRequest {
         title: request.title.clone(),
