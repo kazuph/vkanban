@@ -103,9 +103,9 @@ impl GitService {
     /// Accepts subdirectories that are inside a repository.
     pub fn discover_repo_root(&self, path: &Path) -> Result<std::path::PathBuf, GitServiceError> {
         let repo = Repository::discover(path)?;
-        let workdir = repo
-            .workdir()
-            .ok_or_else(|| GitServiceError::InvalidRepository("Bare repositories are not supported".into()))?;
+        let workdir = repo.workdir().ok_or_else(|| {
+            GitServiceError::InvalidRepository("Bare repositories are not supported".into())
+        })?;
         Ok(workdir.to_path_buf())
     }
 
@@ -1451,7 +1451,7 @@ impl GitService {
             // Attempt CLI-based push using http.extraheader with Bearer token
             // Derive host from the HTTPS URL for scoping
             let https_url_clone = https_url.clone();
-            let (scheme, host) = (|| {
+            let (scheme, host) = {
                 // crude parser sufficient for https://host/path.git
                 if let Some(rest) = https_url_clone.split_once("://") {
                     let scheme = rest.0;
@@ -1460,11 +1460,10 @@ impl GitService {
                 } else {
                     ("https".to_string(), "github.com".to_string())
                 }
-            })();
+            };
 
             let extra = format!(
-                "http.{}://{}/.extraheader=AUTHORIZATION: bearer {}",
-                scheme, host, github_token
+                "http.{scheme}://{host}/.extraheader=AUTHORIZATION: bearer {github_token}"
             );
 
             let status = std::process::Command::new("git")

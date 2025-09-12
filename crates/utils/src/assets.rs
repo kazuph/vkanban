@@ -1,6 +1,8 @@
+use std::env;
+
 use directories::ProjectDirs;
 use rust_embed::RustEmbed;
-use std::env;
+
 use crate::path::expand_tilde;
 
 const PROJECT_ROOT: &str = env!("CARGO_MANIFEST_DIR");

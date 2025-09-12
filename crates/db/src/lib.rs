@@ -1,12 +1,23 @@
 use std::{pin::Pin, str::FromStr, sync::Arc};
 
 use sqlx::{
-    Error, Pool, Sqlite, SqlitePool,
+    Error, Pool, Sqlite,
     sqlite::{SqliteConnectOptions, SqliteConnection, SqlitePoolOptions},
 };
 use utils::assets::asset_dir;
 
 pub mod models;
+
+// Type alias to reduce clippy::type_complexity noise for the after_connect hook
+type AfterConnectHook = Arc<
+    dyn for<'a> Fn(
+            &'a mut SqliteConnection,
+        )
+            -> Pin<Box<dyn std::future::Future<Output = Result<(), Error>> + Send + 'a>>
+        + Send
+        + Sync
+        + 'static,
+>;
 
 #[derive(Clone)]
 pub struct DBService {
@@ -15,10 +26,6 @@ pub struct DBService {
 
 impl DBService {
     pub async fn new() -> Result<DBService, Error> {
-        let database_url = format!(
-            "sqlite://{}",
-            asset_dir().join("db.sqlite").to_string_lossy()
-        );
         // Always go through create_pool to ensure after-connect PRAGMAs
         let pool = Self::create_pool(None).await?;
         // Best-effort: trim any leftover WAL from previous runs
@@ -32,7 +39,8 @@ impl DBService {
     where
         F: for<'a> Fn(
                 &'a mut SqliteConnection,
-            ) -> Pin<Box<dyn std::future::Future<Output = Result<(), Error>> + Send + 'a>>
+            )
+                -> Pin<Box<dyn std::future::Future<Output = Result<(), Error>> + Send + 'a>>
             + Send
             + Sync
             + 'static,
@@ -41,16 +49,7 @@ impl DBService {
         Ok(DBService { pool })
     }
 
-    async fn create_pool(
-        after_connect: Option<Arc<
-            dyn for<'a> Fn(
-                    &'a mut SqliteConnection,
-                ) -> Pin<Box<dyn std::future::Future<Output = Result<(), Error>> + Send + 'a>>
-                + Send
-                + Sync
-                + 'static,
-        >>,
-    ) -> Result<Pool<Sqlite>, Error> {
+    async fn create_pool(after_connect: Option<AfterConnectHook>) -> Result<Pool<Sqlite>, Error> {
         let database_url = format!(
             "sqlite://{}",
             asset_dir().join("db.sqlite").to_string_lossy()
@@ -126,9 +125,7 @@ pub mod maintenance {
                 tokio::time::sleep(Duration::from_secs(CHECK_INTERVAL_SECS)).await;
 
                 // Measure WAL size
-                let wal_bytes = std::fs::metadata(&wal_path)
-                    .map(|m| m.len())
-                    .unwrap_or(0);
+                let wal_bytes = std::fs::metadata(&wal_path).map(|m| m.len()).unwrap_or(0);
 
                 if wal_bytes > 0 {
                     tracing::debug!(target: "db", wal_bytes, "WAL present");
@@ -144,17 +141,14 @@ pub mod maintenance {
                     }
 
                     // Re-check size and try a stronger mode if still large
-                    let still_large = std::fs::metadata(&wal_path)
-                        .map(|m| m.len())
-                        .unwrap_or(0)
-                        > WAL_MAX_BYTES;
-                    if still_large {
-                        if let Err(e) = sqlx::query("PRAGMA wal_checkpoint(RESTART);")
+                    let still_large =
+                        std::fs::metadata(&wal_path).map(|m| m.len()).unwrap_or(0) > WAL_MAX_BYTES;
+                    if still_large
+                        && let Err(e) = sqlx::query("PRAGMA wal_checkpoint(RESTART);")
                             .execute(&pool)
                             .await
-                        {
-                            tracing::warn!(target: "db", "wal_checkpoint(RESTART) failed: {}", e);
-                        }
+                    {
+                        tracing::warn!(target: "db", "wal_checkpoint(RESTART) failed: {}", e);
                     }
                 } else if wal_bytes > 0 {
                     // Keep WAL small opportunistically
@@ -172,8 +166,8 @@ pub mod maintenance {
                         .fetch_one(&pool)
                         .await,
                 ) {
-                    let freelist_bytes = (page_size.max(0) as u64)
-                        .saturating_mul(freelist_pages.max(0) as u64);
+                    let freelist_bytes =
+                        (page_size.max(0) as u64).saturating_mul(freelist_pages.max(0) as u64);
                     if freelist_bytes > VACUUM_FREELIST_MAX_BYTES && wal_bytes < 1024 * 1024 {
                         // Only vacuum when WAL is small to avoid long stalls
                         tracing::info!(target: "db", freelist_bytes, "Running VACUUM due to large freelist");

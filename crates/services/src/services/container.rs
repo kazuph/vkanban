@@ -527,11 +527,7 @@ pub trait ContainerService {
         // and the task title/description are background context.
         let task_background = task.to_prompt();
         let mut combined = if let Some(ii) = initial_instructions.filter(|s| !s.trim().is_empty()) {
-            format!(
-                "{}\n\n[Background]\n{}",
-                ii.trim(),
-                task_background
-            )
+            format!("{}\n\n[Background]\n{}", ii.trim(), task_background)
         } else {
             // Backwards compatible fallback: previous behavior
             task_background
@@ -554,7 +550,7 @@ pub trait ContainerService {
                     // using subshells to isolate cd's; stop on first failure.
                     let mut parts: Vec<String> = Vec::new();
                     for d in dirs {
-                        parts.push(format!("(cd \"{}\" && {{ {} ; }})", d, base_script));
+                        parts.push(format!("(cd \"{d}\" && {{ {base_script} ; }})"));
                     }
                     return format!("set -e\n{}", parts.join(" && \n"));
                 }
@@ -576,7 +572,8 @@ pub trait ContainerService {
 
         // Choose whether to execute the setup_script or coding agent first
         let execution_process = if let Some(setup_script) = project.setup_script {
-            let setup_script = make_workspace_script(&setup_script, project.workspace_dirs.as_ref());
+            let setup_script =
+                make_workspace_script(&setup_script, project.workspace_dirs.as_ref());
             let executor_action = ExecutorAction::new(
                 ExecutorActionType::ScriptRequest(ScriptRequest {
                     script: setup_script,

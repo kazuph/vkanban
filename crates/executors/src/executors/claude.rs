@@ -1509,6 +1509,7 @@ mod tests {
             plan: None,
             append_prompt: AppendPrompt::default(),
             dangerously_skip_permissions: None,
+            model: None,
             cmd: crate::command::CmdOverrides {
                 base_command_override: None,
                 additional_params: None,

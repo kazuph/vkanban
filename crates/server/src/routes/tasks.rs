@@ -10,11 +10,11 @@ use axum::{
 };
 use db::models::{
     image::TaskImage,
+    merge::MergeStatus,
     project::Project,
     task::{CreateTask, Task, TaskWithAttemptStatus, UpdateTask},
     task_attempt::{CreateTaskAttempt, TaskAttempt},
 };
-use db::models::merge::MergeStatus;
 use deployment::Deployment;
 use futures_util::TryStreamExt;
 use serde::{Deserialize, Serialize};
@@ -22,8 +22,8 @@ use services::services::container::{
     ContainerService, WorktreeCleanupData, cleanup_worktrees_direct,
 };
 use sqlx::Error as SqlxError;
-use utils::response::ApiResponse;
 use ts_rs::TS;
+use utils::response::ApiResponse;
 use uuid::Uuid;
 
 use crate::{DeploymentImpl, error::ApiError, middleware::load_task_middleware};
@@ -222,13 +222,7 @@ pub async fn create_task_and_start(
     .await?;
     let execution_process = deployment
         .container()
-        .start_attempt(
-            &task_attempt,
-            executor_profile_id.clone(),
-            None,
-            None,
-            None,
-        )
+        .start_attempt(&task_attempt, executor_profile_id.clone(), None, None, None)
         .await?;
     deployment
         .track_if_analytics_allowed(

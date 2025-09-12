@@ -1,4 +1,7 @@
-use std::{env, path::{Path, PathBuf}};
+use std::{
+    env,
+    path::{Path, PathBuf},
+};
 
 /// Directory name for storing images in worktrees
 pub const VIBE_IMAGES_DIR: &str = ".vibe-images";
@@ -110,7 +113,11 @@ pub fn get_vibe_kanban_temp_dir() -> std::path::PathBuf {
             .map(|v| v.eq_ignore_ascii_case("prod") || v.eq_ignore_ascii_case("system"))
             .unwrap_or(false);
 
-    let dir_name = if cfg!(debug_assertions) && !force_prod { "vibe-kanban-dev" } else { "vibe-kanban" };
+    let dir_name = if cfg!(debug_assertions) && !force_prod {
+        "vibe-kanban-dev"
+    } else {
+        "vibe-kanban"
+    };
 
     if cfg!(target_os = "macos") {
         // macOS already uses /var/folders/... which is persistent storage

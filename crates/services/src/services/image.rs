@@ -7,8 +7,8 @@ use db::models::image::{CreateImage, Image};
 use regex::{Captures, Regex};
 use sha2::{Digest, Sha256};
 use sqlx::SqlitePool;
-use uuid::Uuid;
 use utils::assets::asset_dir;
+use uuid::Uuid;
 
 #[derive(Debug, thiserror::Error)]
 pub enum ImageError {
