@@ -26,6 +26,7 @@ type Props = {
   expanded: boolean;
   onToggle: () => void;
   selectedAttempt: TaskAttempt | null;
+  diffMode?: DiffModeEnum;
 };
 
 function labelAndIcon(diff: Diff) {
@@ -45,6 +46,7 @@ export default function DiffCard({
   expanded,
   onToggle,
   selectedAttempt,
+  diffMode = DiffModeEnum.Unified,
 }: Props) {
   const { config } = useUserSystem();
   const theme = getActualTheme(config?.theme);
@@ -173,14 +175,14 @@ export default function DiffCard({
 
       {expanded && diffFile && (
         <div>
-          <DiffView
-            diffFile={diffFile}
-            diffViewWrap={false}
-            diffViewTheme={theme}
-            diffViewHighlight
-            diffViewMode={DiffModeEnum.Unified}
-            diffViewFontSize={12}
-          />
+      <DiffView
+        diffFile={diffFile}
+        diffViewWrap={false}
+        diffViewTheme={theme}
+        diffViewHighlight
+        diffViewMode={diffMode}
+        diffViewFontSize={12}
+      />
         </div>
       )}
       {expanded && !diffFile && (

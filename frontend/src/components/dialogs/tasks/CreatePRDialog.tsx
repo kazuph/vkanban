@@ -10,13 +10,7 @@ import { Label } from '@radix-ui/react-label';
 import { Textarea } from '@/components/ui/textarea.tsx';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+import BranchSelector from '@/components/tasks/BranchSelector';
 import { useCallback, useEffect, useState } from 'react';
 import { attemptsApi } from '@/lib/api.ts';
 
@@ -161,29 +155,12 @@ const CreatePrDialog = NiceModal.create(() => {
             </div>
             <div className="space-y-2">
               <Label htmlFor="pr-base">Base Branch</Label>
-              <Select
-                value={prBaseBranch}
-                onValueChange={setPrBaseBranch}
-                disabled={branchesLoading}
-              >
-                <SelectTrigger>
-                  <SelectValue
-                    placeholder={
-                      branchesLoading
-                        ? 'Loading branches...'
-                        : 'Select base branch'
-                    }
-                  />
-                </SelectTrigger>
-                <SelectContent>
-                  {branches.map((branch) => (
-                    <SelectItem key={branch.name} value={branch.name}>
-                      {branch.name}
-                      {branch.is_current && ' (current)'}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <BranchSelector
+                branches={branches as any}
+                selectedBranch={prBaseBranch || null}
+                onBranchSelect={(name) => setPrBaseBranch(name)}
+                placeholder={branchesLoading ? 'Loading branches...' : 'Select base branch'}
+              />
             </div>
             {error && (
               <div className="text-sm text-destructive bg-red-50 p-2 rounded">

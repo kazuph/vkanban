@@ -18,6 +18,7 @@ import { showModal } from '@/lib/modals';
 import { Card } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
 import { attemptsApi, executionProcessesApi } from '@/lib/api';
+import BranchSelector from '@/components/tasks/BranchSelector';
 
 type Props = {
   task: Task;
@@ -238,34 +239,22 @@ function CreateAttempt({
                 Base Branch
               </label>
             </div>
-            <select
-              className="w-full text-xs border rounded px-2 py-1 bg-background"
-              value={
+            <BranchSelector
+              branches={branches}
+              selectedBranch={
                 selectedBranch ||
                 branches.find((b) => b.is_current)?.name ||
-                branches[0]?.name ||
-                ''
+                branches[0]?.name || null
               }
-              onChange={(e) => {
-                const val = e.target.value;
-                setSelectedBranch(val || null);
-              }}
-              disabled={reuseBranch}
-              // Render options
-            >
-            {(() => {
-              const names = new Set<string>(branches.map((b) => b.name));
-              if (selectedBranch && !names.has(selectedBranch)) {
-                // Ensure the current selection is selectable even if not in list
-                names.add(selectedBranch);
-              }
-              return Array.from(names).map((name) => (
-                <option key={name} value={name}>
-                  {name}
-                </option>
-              ));
-            })()}
-            </select>
+              onBranchSelect={(name) => setSelectedBranch(name || null)}
+              placeholder="Select base branch"
+              className="text-xs"
+            />
+            {reuseBranch && (
+              <div className="text-[11px] text-muted-foreground mt-1">
+                Reusing current attempt's branch; base branch selection is ignored.
+              </div>
+            )}
             {selectedAttempt?.branch && (
               <label className="inline-flex items-center gap-2 mt-2 text-xs">
                 <input

@@ -5,6 +5,7 @@ import {
   History,
   Play,
   Plus,
+  GitFork,
   RefreshCw,
   Settings,
   StopCircle,
@@ -48,6 +49,7 @@ import { useKeyboardShortcuts } from '@/lib/keyboard-shortcuts.ts';
 import { writeClipboardViaBridge } from '@/vscode/bridge';
 import { useProcessSelection } from '@/contexts/ProcessSelectionContext';
 import { showModal } from '@/lib/modals';
+import { openTaskForm } from '@/lib/openTaskForm';
 import { attemptsApi } from '@/lib/api';
 import { useQueryClient } from '@tanstack/react-query';
 
@@ -133,6 +135,13 @@ function CurrentAttempt({
   const [copied, setCopied] = useState(false);
   const [mergeSuccess, setMergeSuccess] = useState(false);
   const [pushSuccess, setPushSuccess] = useState(false);
+  const handleSpinoffClick = () => {
+    openTaskForm({
+      projectId,
+      initialBaseBranch: selectedAttempt.branch || selectedAttempt.base_branch,
+      parentTaskAttemptId: selectedAttempt.id,
+    });
+  };
   const [editingHead, setEditingHead] = useState(false);
   const [newHeadBranch, setNewHeadBranch] = useState<string>('');
 
@@ -853,6 +862,16 @@ function CurrentAttempt({
                 </Button>
               ) : null
             )}
+            <Button
+              variant="outline"
+              size="xs"
+              onClick={handleSpinoffClick}
+              className="gap-1"
+              title="Create a new task from this attempt"
+            >
+              <GitFork className="h-3 w-3" />
+              Spinoff
+            </Button>
             {showHistory && taskAttempts.length > 1 && (
               <DropdownMenu>
                 <TooltipProvider>
