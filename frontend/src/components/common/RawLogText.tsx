@@ -33,6 +33,38 @@ function linkifyHtml(html: string, repoUrlBase?: string): string {
 
     const urlRegex = /https?:\/\/[^\s<'"`]+/gi;
 
+    const prRegex = /#(\d+)/g;
+
+    const appendWithPrLinks = (frag: DocumentFragment, text: string) => {
+      if (!text) return;
+      if (!repoUrlBase) {
+        frag.appendChild(doc.createTextNode(text));
+        return;
+      }
+      let last = 0;
+      let m: RegExpExecArray | null;
+      prRegex.lastIndex = 0;
+      while ((m = prRegex.exec(text)) !== null) {
+        const start = m.index;
+        const end = start + m[0].length;
+        if (start > last) {
+          frag.appendChild(doc.createTextNode(text.slice(last, start)));
+        }
+        const num = m[1];
+        const a = doc.createElement('a');
+        a.setAttribute('href', `${repoUrlBase}/pull/${num}`);
+        a.setAttribute('target', '_blank');
+        a.setAttribute('rel', 'noopener noreferrer');
+        a.setAttribute('class', 'underline text-[hsl(var(--info))] hover:opacity-90 break-words');
+        a.textContent = `#${num}`;
+        frag.appendChild(a);
+        last = end;
+      }
+      if (last < text.length) {
+        frag.appendChild(doc.createTextNode(text.slice(last)));
+      }
+    };
+
     const traverse = (node: Node) => {
       // Skip linkifying inside existing anchors
       if (node.nodeType === Node.ELEMENT_NODE) {
@@ -48,16 +80,16 @@ function linkifyHtml(html: string, repoUrlBase?: string): string {
         const frag = doc.createDocumentFragment();
         let lastIndex = 0;
 
-    while ((match = urlRegex.exec(text)) !== null) {
-      const full = match[0];
-      const start = match.index;
-      const end = start + full.length;
+        while ((match = urlRegex.exec(text)) !== null) {
+          const full = match[0];
+          const start = match.index;
+          const end = start + full.length;
 
-      // Flush preceding text
-      if (start > lastIndex) {
-        const chunk = text.slice(lastIndex, start);
-        frag.appendChild(doc.createTextNode(chunk));
-      }
+          // Flush preceding text with PR links
+          if (start > lastIndex) {
+            const chunk = text.slice(lastIndex, start);
+            appendWithPrLinks(frag, chunk);
+          }
 
           // Trim trailing punctuation from display and href
           const m = /^(.*?)([)\],.;:!?]+)$/.exec(full);
@@ -77,18 +109,18 @@ function linkifyHtml(html: string, repoUrlBase?: string): string {
             );
             a.textContent = urlStr;
             frag.appendChild(a);
-            if (trailing) frag.appendChild(doc.createTextNode(trailing));
+            if (trailing) appendWithPrLinks(frag, trailing);
           } else {
             // Fallback: just append as text
-            frag.appendChild(doc.createTextNode(full));
+            appendWithPrLinks(frag, full);
           }
 
           lastIndex = end;
         }
 
-        // Append remaining text as-is (no #123 linkification)
+        // Append remaining text with PR links
         const rest = text.slice(lastIndex);
-        if (rest) frag.appendChild(doc.createTextNode(rest));
+        if (rest) appendWithPrLinks(frag, rest);
 
         if (frag.childNodes.length > 0) {
           node.parentNode?.replaceChild(frag, node);

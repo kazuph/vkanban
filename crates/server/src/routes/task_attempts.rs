@@ -9,7 +9,7 @@ use axum::{
         Json as ResponseJson, Sse,
         sse::{Event, KeepAlive},
     },
-    routing::{get, post, delete},
+    routing::{get, post},
 };
 use db::models::{
     execution_process::{ExecutionProcess, ExecutionProcessRunReason},
@@ -35,6 +35,7 @@ use services::services::{
     container::ContainerService,
     github_service::{CreatePrRequest, GitHubService, GitHubServiceError},
     image::ImageService,
+    worktree_manager::WorktreeManager,
 };
 use sqlx::Error as SqlxError;
 use ts_rs::TS;
@@ -59,56 +60,53 @@ fn build_conversation_context_from_logs(
                     if let Some(value) = op.get("value") {
                         // Expect { type: "NORMALIZED_ENTRY" | "STDOUT" |..., content: {...} }
                         let typ = value.get("type").and_then(|t| t.as_str()).unwrap_or("");
-                        if typ == "NORMALIZED_ENTRY" {
-                            if let Some(content) = value.get("content") {
-                                let entry_type = content
-                                    .get("entry_type")
-                                    .and_then(|et| et.get("type"))
-                                    .and_then(|s| s.as_str())
-                                    .unwrap_or("");
-                                let text = content
-                                    .get("content")
-                                    .and_then(|c| c.as_str())
-                                    .unwrap_or("")
-                                    .trim();
-                                match entry_type {
-                                    "user_message" => {
-                                        if !text.is_empty() {
-                                            transcript.push_str("User: ");
-                                            transcript.push_str(text);
-                                            transcript.push('\n');
-                                        }
+                        if typ == "NORMALIZED_ENTRY"
+                            && let Some(content) = value.get("content")
+                        {
+                            let entry_type = content
+                                .get("entry_type")
+                                .and_then(|et| et.get("type"))
+                                .and_then(|s| s.as_str())
+                                .unwrap_or("");
+                            let text = content
+                                .get("content")
+                                .and_then(|c| c.as_str())
+                                .unwrap_or("")
+                                .trim();
+                            match entry_type {
+                                "user_message" => {
+                                    if !text.is_empty() {
+                                        transcript.push_str("User: ");
+                                        transcript.push_str(text);
+                                        transcript.push('\n');
                                     }
-                                    "assistant_message" => {
-                                        if !text.is_empty() {
-                                            transcript.push_str("Assistant: ");
-                                            transcript.push_str(text);
-                                            transcript.push('\n');
-                                        }
+                                }
+                                "assistant_message" => {
+                                    if !text.is_empty() {
+                                        transcript.push_str("Assistant: ");
+                                        transcript.push_str(text);
+                                        transcript.push('\n');
                                     }
-                                    "tool_use" => {
-                                        if let Some(action) = content
+                                }
+                                "tool_use" => {
+                                    if let Some(action) = content
+                                        .get("entry_type")
+                                        .and_then(|et| et.get("action_type"))
+                                        .and_then(|a| a.get("action"))
+                                        .and_then(|s| s.as_str())
+                                        && action == "plan_presentation"
+                                        && let Some(plan) = content
                                             .get("entry_type")
                                             .and_then(|et| et.get("action_type"))
-                                            .and_then(|a| a.get("action"))
-                                            .and_then(|s| s.as_str())
-                                        {
-                                            if action == "plan_presentation" {
-                                                if let Some(plan) = content
-                                                    .get("entry_type")
-                                                    .and_then(|et| et.get("action_type"))
-                                                    .and_then(|a| a.get("plan"))
-                                                    .and_then(|p| p.as_str())
-                                                {
-                                                    transcript.push_str("Plan:\n");
-                                                    transcript.push_str(plan.trim());
-                                                    transcript.push('\n');
-                                                }
-                                            }
-                                        }
+                                            .and_then(|a| a.get("plan"))
+                                            .and_then(|p| p.as_str())
+                                    {
+                                        transcript.push_str("Plan:\n");
+                                        transcript.push_str(plan.trim());
+                                        transcript.push('\n');
                                     }
-                                    _ => {}
                                 }
+                                _ => {}
                             }
                         }
                     }
@@ -149,6 +147,11 @@ pub struct CreateGitHubPrRequest {
     pub base_branch: Option<String>,
 }
 
+#[derive(Debug, Deserialize, Serialize, TS)]
+pub struct UpdateAttemptBranchRequest {
+    pub branch: String,
+}
+
 #[derive(Debug, Serialize)]
 pub struct FollowUpResponse {
     pub message: String,
@@ -166,6 +169,7 @@ pub async fn get_task_attempts(
     Query(query): Query<TaskAttemptQuery>,
 ) -> Result<ResponseJson<ApiResponse<Vec<TaskAttempt>>>, ApiError> {
     let pool = &deployment.db().pool;
+
     let attempts = TaskAttempt::fetch_all(pool, query.task_id).await?;
     Ok(ResponseJson(ApiResponse::success(attempts)))
 }
@@ -224,20 +228,14 @@ pub async fn create_task_attempt(
         let pool = &deployment.db().pool;
         // Newest first
         let existing_attempts = TaskAttempt::fetch_all(pool, Some(payload.task_id)).await?;
-        if let Some(src) = existing_attempts
-            .into_iter()
-            .find(|a| {
-                a.id != task_attempt.id
-                    && !a.worktree_deleted
-                    && a.branch.is_some()
-                    && a.container_ref.is_some()
-            })
-        {
+        if let Some(src) = existing_attempts.into_iter().find(|a| {
+            a.id != task_attempt.id
+                && !a.worktree_deleted
+                && a.branch.is_some()
+                && a.container_ref.is_some()
+        }) {
             let branch = src.branch.as_ref().expect("checked is_some");
-            let container_ref = src
-                .container_ref
-                .as_ref()
-                .expect("checked is_some");
+            let container_ref = src.container_ref.as_ref().expect("checked is_some");
 
             // Persist the reused pointers into the new attempt
             TaskAttempt::update_branch(pool, task_attempt.id, branch).await?;
@@ -262,28 +260,28 @@ pub async fn create_task_attempt(
     // If requested, reuse branch and container/worktree from an existing attempt
     if let Some(src_attempt_id) = payload.reuse_branch_of_attempt_id {
         let pool = &deployment.db().pool;
-        let src = TaskAttempt::find_by_id(pool, src_attempt_id)
-            .await?
-            .ok_or(ApiError::TaskAttempt(TaskAttemptError::ValidationError(
-                "Source attempt not found".to_string(),
-            )))?;
+        let src =
+            TaskAttempt::find_by_id(pool, src_attempt_id)
+                .await?
+                .ok_or(ApiError::TaskAttempt(TaskAttemptError::ValidationError(
+                    "Source attempt not found".to_string(),
+                )))?;
         if src.task_id != payload.task_id {
             return Err(ApiError::TaskAttempt(TaskAttemptError::ValidationError(
                 "Source attempt belongs to a different task".to_string(),
             )));
         }
-        let branch = src
-            .branch
-            .clone()
-            .ok_or(ApiError::TaskAttempt(TaskAttemptError::ValidationError(
-                "Source attempt has no branch to reuse".to_string(),
-            )))?;
-        let container_ref = src
-            .container_ref
-            .clone()
-            .ok_or(ApiError::TaskAttempt(TaskAttemptError::ValidationError(
+        let branch =
+            src.branch
+                .clone()
+                .ok_or(ApiError::TaskAttempt(TaskAttemptError::ValidationError(
+                    "Source attempt has no branch to reuse".to_string(),
+                )))?;
+        let container_ref = src.container_ref.clone().ok_or(ApiError::TaskAttempt(
+            TaskAttemptError::ValidationError(
                 "Source attempt has no worktree to reuse".to_string(),
-            )))?;
+            ),
+        ))?;
 
         // Persist the reused pointers into the new attempt
         TaskAttempt::update_branch(pool, task_attempt.id, &branch).await?;
@@ -454,21 +452,21 @@ pub async fn follow_up(
     if is_executor_changed {
         force_new_session = true;
         // Attempt to reconstruct a concise conversation from the latest process logs
-        if let Ok(Some(prev_logs)) = db::models::execution_process_logs::ExecutionProcessLogs::find_by_execution_id(
-            &deployment.db().pool,
-            latest_execution_process.id,
-        )
-        .await
+        if let Ok(Some(prev_logs)) =
+            db::models::execution_process_logs::ExecutionProcessLogs::find_by_execution_id(
+                &deployment.db().pool,
+                latest_execution_process.id,
+            )
+            .await
+            && let Ok(history) = build_conversation_context_from_logs(&prev_logs)
         {
-            if let Ok(history) = build_conversation_context_from_logs(&prev_logs) {
-                let header = "Context from previous agent (shortened):\n";
-                let sep = "\n\n---\n\n";
-                let mut ctx = history;
-                if ctx.len() > 8000 {
-                    ctx.truncate(8000);
-                }
-                prepared_prompt = format!("{header}{ctx}{sep}{prepared_prompt}");
+            let header = "Context from previous agent (shortened):\n";
+            let sep = "\n\n---\n\n";
+            let mut ctx = history;
+            if ctx.len() > 8000 {
+                ctx.truncate(8000);
             }
+            prepared_prompt = format!("{header}{ctx}{sep}{prepared_prompt}");
         }
     }
 
@@ -500,12 +498,12 @@ pub async fn follow_up(
         // Task context kept minimal
         fallback.push_str("[Task]\n");
         fallback.push_str(&format!("Title: {}\n", task.title.trim()));
-        if let Some(desc) = &task.description {
-            if !desc.trim().is_empty() {
-                fallback.push_str("Description: ");
-                fallback.push_str(desc.trim());
-                fallback.push('\n');
-            }
+        if let Some(desc) = &task.description
+            && !desc.trim().is_empty()
+        {
+            fallback.push_str("Description: ");
+            fallback.push_str(desc.trim());
+            fallback.push('\n');
         }
         // Guidance to use git history/diff for further context
         let branch_info = task_attempt
@@ -623,10 +621,12 @@ pub async fn export_plan_to_issue(
         )
         .await;
 
-    Ok(ResponseJson(ApiResponse::success(ExportPlanToIssueResponse {
-        url: issue.url,
-        number: issue.number,
-    })))
+    Ok(ResponseJson(ApiResponse::success(
+        ExportPlanToIssueResponse {
+            url: issue.url,
+            number: issue.number,
+        },
+    )))
 }
 
 #[axum::debug_handler]
@@ -959,20 +959,20 @@ pub async fn create_github_pr(
         ))
     })?;
     // 1) 既存PRリンクがDBにあればそのURLを返す（ブラウザも開く）
-    if let Ok(merges) = Merge::find_by_task_attempt_id(pool, task_attempt.id).await {
-        if let Some(existing_open) = merges.into_iter().find_map(|m| match m {
+    if let Ok(merges) = Merge::find_by_task_attempt_id(pool, task_attempt.id).await
+        && let Some(existing_open) = merges.into_iter().find_map(|m| match m {
             Merge::Pr(pr) if matches!(pr.pr_info.status, MergeStatus::Open) => Some(pr),
             _ => None,
-        }) {
-            let url = existing_open.pr_info.url.clone();
-            let pr_url = url.clone();
-            tokio::spawn(async move {
-                if let Err(e) = open_browser(&pr_url).await {
-                    tracing::debug!("Failed to open PR in browser (ignored): {}", e);
-                }
-            });
-            return Ok(ResponseJson(ApiResponse::success(url)));
-        }
+        })
+    {
+        let url = existing_open.pr_info.url.clone();
+        let pr_url = url.clone();
+        tokio::spawn(async move {
+            if let Err(e) = open_browser(&pr_url).await {
+                tracing::debug!("Failed to open PR in browser (ignored): {}", e);
+            }
+        });
+        return Ok(ResponseJson(ApiResponse::success(url)));
     }
 
     // 2) GitHub上に既存のオープンPRがあるかを一度スキャン。見つかればDBに登録して返す
@@ -1066,12 +1066,11 @@ pub async fn create_github_pr(
         &project.git_repo_path,
         branch_name,
         &norm_base_branch_name,
-    ) {
-        if commits_ahead == 0 {
-            return Ok(ResponseJson(ApiResponse::error(
-                "No changes between head and base; commit changes before creating a PR.",
-            )));
-        }
+    ) && commits_ahead == 0
+    {
+        return Ok(ResponseJson(ApiResponse::error(
+            "No changes between head and base; commit changes before creating a PR.",
+        )));
     }
     // Create the PR using GitHub service
     let pr_request = CreatePrRequest {
@@ -1164,20 +1163,20 @@ pub async fn open_existing_github_pr(
     })?;
 
     // (1) If DB already knows an open PR, open and return it immediately
-    if let Ok(merges) = Merge::find_by_task_attempt_id(pool, task_attempt.id).await {
-        if let Some(existing_open) = merges.into_iter().find_map(|m| match m {
+    if let Ok(merges) = Merge::find_by_task_attempt_id(pool, task_attempt.id).await
+        && let Some(existing_open) = merges.into_iter().find_map(|m| match m {
             Merge::Pr(pr) if matches!(pr.pr_info.status, MergeStatus::Open) => Some(pr),
             _ => None,
-        }) {
-            let url = existing_open.pr_info.url.clone();
-            let pr_url = url.clone();
-            tokio::spawn(async move {
-                if let Err(e) = open_browser(&pr_url).await {
-                    tracing::debug!("Failed to open PR in browser (ignored): {}", e);
-                }
-            });
-            return Ok(ResponseJson(ApiResponse::success(url)));
-        }
+        })
+    {
+        let url = existing_open.pr_info.url.clone();
+        let pr_url = url.clone();
+        tokio::spawn(async move {
+            if let Err(e) = open_browser(&pr_url).await {
+                tracing::debug!("Failed to open PR in browser (ignored): {}", e);
+            }
+        });
+        return Ok(ResponseJson(ApiResponse::success(url)));
     }
 
     // Best-effort: if we have a valid token, query GitHub for an existing open PR
@@ -1392,16 +1391,15 @@ pub async fn get_task_attempt_branch_status(
         repo_url_base: None,
     };
     // Try to derive GitHub repo base URL from git remote
-    if branch_status.repo_url_base.is_none() {
-        if let Ok(info) = deployment
+    if branch_status.repo_url_base.is_none()
+        && let Ok(info) = deployment
             .git()
             .get_github_repo_info(std::path::Path::new(&ctx.project.git_repo_path))
-        {
-            branch_status.repo_url_base = Some(format!(
-                "https://github.com/{}/{}",
-                info.owner, info.repo_name
-            ));
-        }
+    {
+        branch_status.repo_url_base = Some(format!(
+            "https://github.com/{}/{}",
+            info.owner, info.repo_name
+        ));
     }
     let has_open_pr = branch_status.merges.first().is_some_and(|m| {
         matches!(
@@ -1490,6 +1488,60 @@ pub async fn rebase_task_attempt(
     Ok(ResponseJson(ApiResponse::success(())))
 }
 
+/// Update the head branch associated with a task attempt and switch the worktree accordingly.
+#[axum::debug_handler]
+pub async fn update_task_attempt_branch(
+    Extension(task_attempt): Extension<TaskAttempt>,
+    State(deployment): State<DeploymentImpl>,
+    Json(payload): Json<UpdateAttemptBranchRequest>,
+) -> Result<ResponseJson<ApiResponse<()>>, ApiError> {
+    let new_branch = payload.branch.trim();
+    if new_branch.is_empty() {
+        return Err(ApiError::TaskAttempt(TaskAttemptError::ValidationError(
+            "Branch name cannot be empty".to_string(),
+        )));
+    }
+
+    // Load context
+    let pool = &deployment.db().pool;
+    let task = task_attempt
+        .parent_task(pool)
+        .await?
+        .ok_or(ApiError::TaskAttempt(TaskAttemptError::TaskNotFound))?;
+    let project = Project::find_by_id(pool, task.project_id)
+        .await?
+        .ok_or(ApiError::Project(ProjectError::ProjectNotFound))?;
+
+    // Validate branch existence (local only for now)
+    if let Err(_e) = deployment
+        .git()
+        .get_branch_oid(std::path::Path::new(&project.git_repo_path), new_branch)
+    {
+        return Err(ApiError::TaskAttempt(TaskAttemptError::BranchNotFound(
+            new_branch.to_string(),
+        )));
+    }
+
+    // Ensure we have a worktree path, then switch the worktree to the target branch safely.
+    let worktree_path = deployment
+        .container()
+        .ensure_container_exists(&task_attempt)
+        .await?;
+
+    WorktreeManager::ensure_worktree_exists(
+        std::path::Path::new(&project.git_repo_path),
+        new_branch,
+        std::path::Path::new(&worktree_path),
+    )
+    .await
+    .map_err(|e| ApiError::TaskAttempt(TaskAttemptError::ValidationError(e.to_string())))?;
+
+    // Persist new branch on the attempt
+    TaskAttempt::update_branch(pool, task_attempt.id, new_branch).await?;
+
+    Ok(ResponseJson(ApiResponse::success(())))
+}
+
 #[derive(serde::Deserialize)]
 pub struct DeleteFileQuery {
     file_path: String,
@@ -1529,8 +1581,6 @@ pub async fn start_dev_server(
     Extension(task_attempt): Extension<TaskAttempt>,
     State(deployment): State<DeploymentImpl>,
 ) -> Result<ResponseJson<ApiResponse<()>>, ApiError> {
-    let pool = &deployment.db().pool;
-
     // Get parent task
     let task = task_attempt
         .parent_task(&deployment.db().pool)
@@ -1666,12 +1716,9 @@ pub async fn delete_task_attempt(
     let _ = deployment.container().delete(&task_attempt).await;
 
     // Delete the attempt row (cascades will remove executions, logs, merges)
-    sqlx::query!(
-        "DELETE FROM task_attempts WHERE id = $1",
-        task_attempt.id
-    )
-    .execute(pool)
-    .await?;
+    sqlx::query!("DELETE FROM task_attempts WHERE id = $1", task_attempt.id)
+        .execute(pool)
+        .await?;
 
     deployment
         .track_if_analytics_allowed(
@@ -1689,6 +1736,7 @@ pub async fn delete_task_attempt(
 pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
     let task_attempt_id_router = Router::new()
         .route("/", get(get_task_attempt).delete(delete_task_attempt))
+        .route("/branch", post(update_task_attempt_branch))
         .route("/follow-up", post(follow_up))
         .route("/plan-to-issue", post(export_plan_to_issue))
         .route("/restore", post(restore_task_attempt))

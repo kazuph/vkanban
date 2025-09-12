@@ -42,6 +42,10 @@ export interface TaskFormDialogProps {
   // - 'create': highlight "Create Task" (for To Do)
   // - 'start': highlight "Create & Start" (for In Progress)
   defaultAction?: 'create' | 'start';
+  // Optional initial base branch for spinoff flow
+  initialBaseBranch?: string;
+  // Optional link to parent attempt for spinoff
+  parentTaskAttemptId?: string;
 }
 
 export const TaskFormDialog = NiceModal.create<TaskFormDialogProps>(

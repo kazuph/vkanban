@@ -1,5 +1,6 @@
 use anyhow::{self, Error as AnyhowError};
 use deployment::{Deployment, DeploymentError};
+use executors::profile::ExecutorConfigs;
 use server::{DeploymentImpl, routes};
 use sqlx::Error as SqlxError;
 use strip_ansi_escapes::strip;
@@ -11,7 +12,6 @@ use utils::{
     port_file::write_port_file,
     sentry::sentry_layer,
 };
-use executors::profile::ExecutorConfigs;
 
 #[derive(Debug, Error)]
 pub enum VibeKanbanError {
@@ -49,7 +49,11 @@ async fn main() -> Result<(), VibeKanbanError> {
         match serde_json::to_string_pretty(&ExecutorConfigs::from_defaults()) {
             Ok(defaults) => {
                 if let Err(e) = std::fs::write(&profiles_path, defaults) {
-                    tracing::warn!("Failed to create default profiles.json at {:?}: {}", profiles_path, e);
+                    tracing::warn!(
+                        "Failed to create default profiles.json at {:?}: {}",
+                        profiles_path,
+                        e
+                    );
                 } else {
                     tracing::info!("Created default profiles.json at {:?}", profiles_path);
                 }
@@ -88,11 +92,7 @@ async fn main() -> Result<(), VibeKanbanError> {
             let cleaned =
                 String::from_utf8(strip(s.as_bytes())).expect("UTF-8 after stripping ANSI");
             // Be resilient to accidental quotes/newlines from shell or scripts
-            cleaned
-                .trim()
-                .trim_matches('"')
-                .parse::<u16>()
-                .ok()
+            cleaned.trim().trim_matches('"').parse::<u16>().ok()
         })
         .unwrap_or_else(|| {
             tracing::info!("No PORT environment variable set, using port 0 for auto-assignment");
@@ -114,13 +114,15 @@ async fn main() -> Result<(), VibeKanbanError> {
 
     if !cfg!(debug_assertions) {
         tracing::info!("Opening browser...");
-        if let Err(e) = open_browser(&format!("http://127.0.0.1:{actual_port}")).await {
-            tracing::warn!(
-                "Failed to open browser automatically: {}. Please open http://127.0.0.1:{} manually.",
-                e,
-                actual_port
-            );
-        }
+        tokio::spawn(async move {
+            if let Err(e) = open_browser(&format!("http://127.0.0.1:{actual_port}")).await {
+                tracing::warn!(
+                    "Failed to open browser automatically: {}. Please open http://127.0.0.1:{} manually.",
+                    e,
+                    actual_port
+                );
+            }
+        });
     }
 
     axum::serve(listener, app_router).await?;

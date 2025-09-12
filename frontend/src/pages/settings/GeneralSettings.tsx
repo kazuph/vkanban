@@ -25,11 +25,11 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Checkbox } from '@/components/ui/checkbox';
 import { ChevronDown, Key, Loader2, Volume2 } from 'lucide-react';
 import {
-  ThemeMode,
-  EditorType,
-  SoundFile,
-  ExecutorProfileId,
   BaseCodingAgent,
+  EditorType,
+  ExecutorProfileId,
+  SoundFile,
+  ThemeMode,
 } from 'shared/types';
 
 import { toPrettyCase } from '@/utils/string';
@@ -542,7 +542,7 @@ export function GeneralSettings() {
             <div>
               <p className="font-medium">Disclaimer Acknowledgment</p>
               <p className="text-sm text-muted-foreground">
-                Reset the safety disclaimer to show it again on next startup.
+                Reset the safety disclaimer.
               </p>
             </div>
             <Button variant="outline" onClick={resetDisclaimer}>
@@ -553,7 +553,7 @@ export function GeneralSettings() {
             <div>
               <p className="font-medium">Onboarding</p>
               <p className="text-sm text-muted-foreground">
-                Reset the onboarding flow to show it again on next startup.
+                Reset the onboarding flow.
               </p>
             </div>
             <Button variant="outline" onClick={resetOnboarding}>
@@ -564,7 +564,7 @@ export function GeneralSettings() {
       </Card>
 
       {/* Sticky Save Button */}
-      <div className="sticky bottom-0 z-10 bg-background/80 backdrop-blur-sm border-t pt-4">
+      <div className="sticky bottom-0 z-10 bg-background/80 backdrop-blur-sm border-t py-4">
         <div className="flex justify-end">
           <Button onClick={handleSave} disabled={saving}>
             {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}

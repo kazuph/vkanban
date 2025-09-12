@@ -513,6 +513,17 @@ export const attemptsApi = {
     return handleApiResponseAsResult<string, never>(response);
   },
 
+  updateBranch: async (
+    attemptId: string,
+    branch: string
+  ): Promise<void> => {
+    const response = await makeRequest(
+      `/api/task-attempts/${attemptId}/branch`,
+      { method: 'POST', body: JSON.stringify({ branch }) }
+    );
+    return handleApiResponse<void>(response);
+  },
+
   startDevServer: async (attemptId: string): Promise<void> => {
     const response = await makeRequest(
       `/api/task-attempts/${attemptId}/start-dev-server`,

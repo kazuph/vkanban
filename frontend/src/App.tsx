@@ -1,20 +1,20 @@
 import { useEffect } from 'react';
 import {
   BrowserRouter,
+  Navigate,
   Route,
   Routes,
   useLocation,
-  Navigate,
 } from 'react-router-dom';
 import { Navbar } from '@/components/layout/navbar';
 import { Projects } from '@/pages/projects';
 import { ProjectTasks } from '@/pages/project-tasks';
 
 import {
-  SettingsLayout,
-  GeneralSettings,
   AgentSettings,
+  GeneralSettings,
   McpSettings,
+  SettingsLayout,
 } from '@/pages/settings/';
 import {
   UserSystemProvider,
@@ -43,9 +43,12 @@ function AppContent() {
   const showNavbar = !location.pathname.endsWith('/full');
 
   useEffect(() => {
+    let cancelled = false;
+
     const handleOnboardingComplete = async (
       onboardingConfig: OnboardingResult
     ) => {
+      if (cancelled) return;
       const updatedConfig = {
         ...config,
         onboarding_acknowledged: true,
@@ -57,14 +60,17 @@ function AppContent() {
     };
 
     const handleDisclaimerAccept = async () => {
+      if (cancelled) return;
       await updateAndSaveConfig({ disclaimer_acknowledged: true });
     };
 
     const handleGitHubLoginComplete = async () => {
+      if (cancelled) return;
       await updateAndSaveConfig({ github_login_acknowledged: true });
     };
 
     const handleTelemetryOptIn = async (analyticsEnabled: boolean) => {
+      if (cancelled) return;
       await updateAndSaveConfig({
         telemetry_acknowledged: true,
         analytics_enabled: analyticsEnabled,
@@ -72,11 +78,12 @@ function AppContent() {
     };
 
     const handleReleaseNotesClose = async () => {
+      if (cancelled) return;
       await updateAndSaveConfig({ show_release_notes: false });
     };
 
     const checkOnboardingSteps = async () => {
-      if (!config) return;
+      if (!config || cancelled) return;
 
       if (!config.disclaimer_acknowledged) {
         await NiceModal.show('disclaimer');
@@ -111,7 +118,16 @@ function AppContent() {
       }
     };
 
-    checkOnboardingSteps();
+    const runOnboarding = async () => {
+      if (!config || cancelled) return;
+      await checkOnboardingSteps();
+    };
+
+    runOnboarding();
+
+    return () => {
+      cancelled = true;
+    };
   }, [config]);
 
   if (loading) {
@@ -123,7 +139,7 @@ function AppContent() {
   }
 
   return (
-    <ThemeProvider initialTheme={config?.theme || ThemeMode.SOLARIZED_LIGHT}>
+    <ThemeProvider initialTheme={config?.theme || ThemeMode.SYSTEM}>
       <AppWithStyleOverride>
         <SearchProvider>
           <div className="h-screen flex flex-col bg-background">

@@ -56,8 +56,7 @@ impl Executable for CodingAgentFollowUpRequest {
                 if force_new {
                     cfg.spawn(current_dir, &self.prompt).await
                 } else {
-                    cfg
-                        .spawn_follow_up(current_dir, &self.prompt, &self.session_id)
+                    cfg.spawn_follow_up(current_dir, &self.prompt, &self.session_id)
                         .await
                 }
             }
@@ -68,8 +67,7 @@ impl Executable for CodingAgentFollowUpRequest {
                 if force_new {
                     cfg.spawn(current_dir, &self.prompt).await
                 } else {
-                    cfg
-                        .spawn_follow_up(current_dir, &self.prompt, &self.session_id)
+                    cfg.spawn_follow_up(current_dir, &self.prompt, &self.session_id)
                         .await
                 }
             }

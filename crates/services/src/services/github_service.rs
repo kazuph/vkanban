@@ -138,16 +138,13 @@ impl GitHubService {
             .state(params::State::Open)
             .head(format!("{}:{}", repo_info.owner, head_branch))
             .per_page(10);
-        if let Some(base) = base_branch {
-            if !base.trim().is_empty() {
-                builder = builder.base(base.to_string());
-            }
+        if let Some(base) = base_branch
+            && !base.trim().is_empty()
+        {
+            builder = builder.base(base.to_string());
         }
 
-        let page = builder
-            .send()
-            .await
-            .map_err(GitHubServiceError::from)?;
+        let page = builder.send().await.map_err(GitHubServiceError::from)?;
 
         if let Some(pr) = page.items.into_iter().next() {
             let pr_info = PullRequestInfo {
@@ -421,10 +418,7 @@ impl GitHubService {
             .body(&first)
             .send()
             .await
-            .map_err(|e| GitHubServiceError::Repository(format!(
-                "Failed to create issue: {}",
-                e
-            )))?;
+            .map_err(|e| GitHubServiceError::Repository(format!("Failed to create issue: {e}")))?;
 
         // Post overflow as comments in chunks if needed
         if let Some(overflow) = rest {
@@ -438,10 +432,11 @@ impl GitHubService {
                     .issues(&repo_info.owner, &repo_info.repo_name)
                     .create_comment(issue.number, chunk)
                     .await
-                    .map_err(|e| GitHubServiceError::Repository(format!(
-                        "Failed to add overflow comment: {}",
-                        e
-                    )))?;
+                    .map_err(|e| {
+                        GitHubServiceError::Repository(format!(
+                            "Failed to add overflow comment: {e}"
+                        ))
+                    })?;
                 start = end;
             }
         }

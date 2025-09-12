@@ -727,9 +727,10 @@ impl ContainerService for LocalContainerService {
 
         // If this attempt already has branch and container_ref set (e.g., branch reuse),
         // just ensure the worktree exists and reuse it instead of creating a new branch/worktree.
-        if let (Some(existing_branch), Some(existing_container)) =
-            (task_attempt.branch.clone(), task_attempt.container_ref.clone())
-        {
+        if let (Some(existing_branch), Some(existing_container)) = (
+            task_attempt.branch.clone(),
+            task_attempt.container_ref.clone(),
+        ) {
             let project = task
                 .parent_project(&self.db.pool)
                 .await?
@@ -814,10 +815,7 @@ impl ContainerService for LocalContainerService {
             self.copy_workspace_env_files(&project.git_repo_path, &worktree_path, ws)
                 .await
                 .unwrap_or_else(|e| {
-                    tracing::warn!(
-                        "Failed to copy workspace .env files to worktree: {}",
-                        e
-                    );
+                    tracing::warn!("Failed to copy workspace .env files to worktree: {}", e);
                 });
         }
 
@@ -842,21 +840,20 @@ impl ContainerService for LocalContainerService {
         // If we used a different base branch than originally recorded (e.g., switched to
         // remote tracking ref like origin/main), persist it so downstream features (diff,
         // rebase, status) compare against the same base we actually used.
-        if effective_base_branch != task_attempt.base_branch {
-            if let Err(e) = TaskAttempt::update_base_branch(
+        if effective_base_branch != task_attempt.base_branch
+            && let Err(e) = TaskAttempt::update_base_branch(
                 &self.db.pool,
                 task_attempt.id,
                 &effective_base_branch,
             )
             .await
-            {
-                tracing::warn!(
-                    "Failed to update base_branch to '{}' for attempt {}: {}",
-                    effective_base_branch,
-                    task_attempt.id,
-                    e
-                );
-            }
+        {
+            tracing::warn!(
+                "Failed to update base_branch to '{}' for attempt {}: {}",
+                effective_base_branch,
+                task_attempt.id,
+                e
+            );
         }
 
         Ok(worktree_path.to_string_lossy().to_string())
@@ -1197,7 +1194,6 @@ impl ContainerService for LocalContainerService {
         }
         Ok(())
     }
-
 }
 
 impl LocalContainerService {
@@ -1218,7 +1214,10 @@ impl LocalContainerService {
             let src_ws = source_dir.join(d);
             let dst_ws = target_dir.join(d);
             if !src_ws.exists() || !src_ws.is_dir() {
-                tracing::debug!("Workspace dir {:?} does not exist; skipping .env copy", src_ws);
+                tracing::debug!(
+                    "Workspace dir {:?} does not exist; skipping .env copy",
+                    src_ws
+                );
                 continue;
             }
 
@@ -1226,17 +1225,15 @@ impl LocalContainerService {
                 std::fs::create_dir_all(&dst_ws).map_err(|e| {
                     ContainerError::Other(anyhow!(
                         "Failed to create workspace dir {:?}: {}",
-                        dst_ws, e
+                        dst_ws,
+                        e
                     ))
                 })?;
             }
 
             // Copy files matching .env*
             let read_dir = std::fs::read_dir(&src_ws).map_err(|e| {
-                ContainerError::Other(anyhow!(
-                    "Failed to read workspace dir {:?}: {}",
-                    src_ws, e
-                ))
+                ContainerError::Other(anyhow!("Failed to read workspace dir {:?}: {}", src_ws, e))
             })?;
 
             for entry in read_dir {
@@ -1244,22 +1241,20 @@ impl LocalContainerService {
                     ContainerError::Other(anyhow!("Failed to read dir entry: {}", e))
                 })?;
                 let path = entry.path();
-                if path.is_file() {
-                    if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
-                        if name == ".env" || name.starts_with(".env.") {
-                            let target = dst_ws.join(name);
-                            std::fs::copy(&path, &target).map_err(|e| {
-                                ContainerError::Other(anyhow!(
-                                    "Failed to copy {:?} to {:?}: {}",
-                                    path, target, e
-                                ))
-                            })?;
-                            tracing::info!(
-                                "Copied workspace env file {:?} to worktree",
-                                target
-                            );
-                        }
-                    }
+                if path.is_file()
+                    && let Some(name) = path.file_name().and_then(|n| n.to_str())
+                    && (name == ".env" || name.starts_with(".env."))
+                {
+                    let target = dst_ws.join(name);
+                    std::fs::copy(&path, &target).map_err(|e| {
+                        ContainerError::Other(anyhow!(
+                            "Failed to copy {:?} to {:?}: {}",
+                            path,
+                            target,
+                            e
+                        ))
+                    })?;
+                    tracing::info!("Copied workspace env file {:?} to worktree", target);
                 }
             }
         }

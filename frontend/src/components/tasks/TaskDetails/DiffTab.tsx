@@ -3,6 +3,8 @@ import { useMemo, useCallback, useState, useEffect } from 'react';
 import { Loader } from '@/components/ui/loader';
 import { Button } from '@/components/ui/button';
 import DiffCard from '@/components/DiffCard';
+import { DiffModeEnum } from '@git-diff-view/react';
+import { Columns, AlignJustify } from 'lucide-react';
 import { useDiffSummary } from '@/hooks/useDiffSummary';
 import type { TaskAttempt } from 'shared/types';
 
@@ -13,16 +15,36 @@ interface DiffTabProps {
 function DiffTab({ selectedAttempt }: DiffTabProps) {
   const [loading, setLoading] = useState(true);
   const [collapsedIds, setCollapsedIds] = useState<Set<string>>(new Set());
+  const [diffMode, setDiffMode] = useState<DiffModeEnum>(DiffModeEnum.Unified);
   const { diffs, error } = useDiffEntries(selectedAttempt?.id ?? null, true);
   const { fileCount, added, deleted } = useDiffSummary(
     selectedAttempt?.id ?? null
   );
 
   useEffect(() => {
+    setLoading(true);
+  }, [selectedAttempt?.id]);
+
+  useEffect(() => {
+    setLoading(true);
+  }, [selectedAttempt?.id]);
+
+  useEffect(() => {
     if (diffs.length > 0 && loading) {
       setLoading(false);
     }
   }, [diffs, loading]);
+
+  // If no diffs arrive within 7 seconds, stop showing the spinner
+  useEffect(() => {
+    if (!loading) return;
+    const timer = setTimeout(() => {
+      if (diffs.length === 0) {
+        setLoading(false);
+      }
+    }, 7000);
+    return () => clearTimeout(timer);
+  }, [loading, diffs.length]);
 
   // Default-collapse certain change kinds on first load
   useEffect(() => {
@@ -75,6 +97,14 @@ function DiffTab({ selectedAttempt }: DiffTabProps) {
     );
   }
 
+  if (!loading && diffs.length === 0) {
+    return (
+      <div className="flex items-center justify-center h-full text-sm text-muted-foreground">
+        No changes have been made yet
+      </div>
+    );
+  }
+
   return (
     <div className="h-full flex flex-col">
       {diffs.length > 0 && (
@@ -93,14 +123,36 @@ function DiffTab({ selectedAttempt }: DiffTabProps) {
                 -{deleted}
               </span>
             </span>
-            <Button
-              variant="outline"
-              size="xs"
-              onClick={handleCollapseAll}
-              className="shrink-0"
-            >
-              {allCollapsed ? 'Expand All' : 'Collapse All'}
-            </Button>
+            <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1 bg-muted rounded p-0.5">
+                <Button
+                  variant={diffMode === DiffModeEnum.Unified ? 'secondary' : 'ghost'}
+                  size="xs"
+                  className="h-6 px-2"
+                  onClick={() => setDiffMode(DiffModeEnum.Unified)}
+                  title="Inline view"
+                >
+                  <AlignJustify className="h-3 w-3 mr-1" /> Inline
+                </Button>
+                <Button
+                  variant={diffMode === DiffModeEnum.Split ? 'secondary' : 'ghost'}
+                  size="xs"
+                  className="h-6 px-2"
+                  onClick={() => setDiffMode(DiffModeEnum.Split)}
+                  title="Split view"
+                >
+                  <Columns className="h-3 w-3 mr-1" /> Split
+                </Button>
+              </div>
+              <Button
+                variant="outline"
+                size="xs"
+                onClick={handleCollapseAll}
+                className="shrink-0"
+              >
+                {allCollapsed ? 'Expand All' : 'Collapse All'}
+              </Button>
+            </div>
           </div>
         </div>
       )}
@@ -114,6 +166,7 @@ function DiffTab({ selectedAttempt }: DiffTabProps) {
               expanded={!collapsedIds.has(id)}
               onToggle={() => toggle(id)}
               selectedAttempt={selectedAttempt}
+              diffMode={diffMode}
             />
           );
         })}

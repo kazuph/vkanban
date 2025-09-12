@@ -48,7 +48,15 @@ export type TaskStatus = "todo" | "inprogress" | "inreview" | "done" | "cancelle
 
 export type Task = { id: string, project_id: string, title: string, description: string | null, status: TaskStatus, parent_task_attempt: string | null, created_at: string, updated_at: string, };
 
-export type TaskWithAttemptStatus = { id: string, project_id: string, title: string, description: string | null, status: TaskStatus, parent_task_attempt: string | null, created_at: string, updated_at: string, has_in_progress_attempt: boolean, has_merged_attempt: boolean, last_attempt_failed: boolean, executor: string, };
+export type TaskWithAttemptStatus = { id: string, project_id: string, title: string, description: string | null, status: TaskStatus, parent_task_attempt: string | null, created_at: string, updated_at: string, has_in_progress_attempt: boolean, has_merged_attempt: boolean, 
+/**
+ * True if any attempt of this task has an open PR recorded in `merges`
+ */
+has_open_pr: boolean, 
+/**
+ * Most recent open PR URL for this task (if any)
+ */
+open_pr_url: string | null, last_attempt_failed: boolean, executor: string, };
 
 export type CreateTask = { project_id: string, title: string, description: string | null, parent_task_attempt: string | null, image_ids: Array<string> | null, };
 
@@ -157,11 +165,15 @@ export type GeminiModel = "default" | "flash";
 
 export type Amp = { append_prompt: AppendPrompt, dangerously_allow_all?: boolean | null, base_command_override?: string | null, additional_params?: Array<string> | null, };
 
-export type Codex = { append_prompt: AppendPrompt, sandbox?: SandboxMode | null, approval?: ApprovalPolicy | null, oss?: boolean | null, model?: string | null, base_command_override?: string | null, additional_params?: Array<string> | null, };
+export type Codex = { append_prompt: AppendPrompt, sandbox?: SandboxMode | null, approval?: ApprovalPolicy | null, oss?: boolean | null, model?: string | null, model_reasoning_effort?: ReasoningEffort | null, model_reasoning_summary?: ReasoningSummary | null, base_command_override?: string | null, additional_params?: Array<string> | null, };
 
-export type SandboxMode = "read-only" | "workspace-write" | "danger-full-access";
+export type SandboxMode = "auto" | "read-only" | "workspace-write" | "danger-full-access";
 
 export type ApprovalPolicy = "untrusted" | "on-failure" | "on-request" | "never";
+
+export type ReasoningEffort = "low" | "medium" | "high";
+
+export type ReasoningSummary = "auto" | "concise" | "detailed" | "none";
 
 export type Cursor = { append_prompt: AppendPrompt, force?: boolean | null, model?: string | null, base_command_override?: string | null, additional_params?: Array<string> | null, };
 
@@ -209,22 +221,21 @@ export type CreateTaskAttemptBody = { task_id: string,
  */
 executor_profile_id: ExecutorProfileId, base_branch: string, 
 /**
- * Reuse branch/worktree of an existing attempt (same task). If provided, server ignores
- * new branch creation and starts a new attempt on the same branch.
+ * Optional: reuse branch and worktree from an existing attempt (same task)
  */
-reuse_branch_of_attempt_id?: string | null, 
+reuse_branch_of_attempt_id: string | null, 
 /**
- * Initial instructions to be treated as the primary request
+ * Optional: initial instructions to be treated as the primary request
  */
-initial_instructions?: string | null, 
+initial_instructions: string | null, 
 /**
  * Optional model override for Codex on initial run
  */
-codex_model_override?: string | null, 
+codex_model_override: string | null, 
 /**
  * Optional model override for Claude on initial run
  */
-claude_model_override?: string | null, };
+claude_model_override: string | null, };
 
 export type RebaseTaskAttemptRequest = { new_base_branch: string | null, };
 
@@ -248,7 +259,11 @@ export type CommitInfo = { sha: string, subject: string, };
 
 export type CommitCompareResult = { head_oid: string, target_oid: string, ahead_from_head: number, behind_from_head: number, is_linear: boolean, };
 
-export type BranchStatus = { commits_behind: number | null, commits_ahead: number | null, has_uncommitted_changes: boolean | null, head_oid: string | null, uncommitted_count: number | null, untracked_count: number | null, base_branch_name: string, remote_commits_behind: number | null, remote_commits_ahead: number | null, merges: Array<Merge>, };
+export type BranchStatus = { commits_behind: number | null, commits_ahead: number | null, has_uncommitted_changes: boolean | null, head_oid: string | null, uncommitted_count: number | null, untracked_count: number | null, base_branch_name: string, remote_commits_behind: number | null, remote_commits_ahead: number | null, merges: Array<Merge>, 
+/**
+ * Base GitHub repo URL like "https://github.com/owner/repo" when detectable
+ */
+repo_url_base: string | null, };
 
 export type ExportPlanToIssueRequest = { title: string, 
 /**

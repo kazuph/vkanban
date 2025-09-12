@@ -5,6 +5,7 @@ import {
   History,
   Play,
   Plus,
+  GitFork,
   RefreshCw,
   Settings,
   StopCircle,
@@ -42,12 +43,13 @@ import { useDevServer } from '@/hooks/useDevServer';
 import { useRebase } from '@/hooks/useRebase';
 import { useMerge } from '@/hooks/useMerge';
 import NiceModal from '@ebay/nice-modal-react';
-import { usePush } from '@/hooks/usePush';
+// import { usePush } from '@/hooks/usePush';
 import { useUserSystem } from '@/components/config-provider.tsx';
 import { useKeyboardShortcuts } from '@/lib/keyboard-shortcuts.ts';
 import { writeClipboardViaBridge } from '@/vscode/bridge';
 import { useProcessSelection } from '@/contexts/ProcessSelectionContext';
 import { showModal } from '@/lib/modals';
+import { openTaskForm } from '@/lib/openTaskForm';
 import { attemptsApi } from '@/lib/api';
 import { useQueryClient } from '@tanstack/react-query';
 
@@ -125,14 +127,23 @@ function CurrentAttempt({
   } = useDevServer(selectedAttempt?.id);
   const rebaseMutation = useRebase(selectedAttempt?.id, projectId);
   const mergeMutation = useMerge(selectedAttempt?.id);
-  const pushMutation = usePush(selectedAttempt?.id);
+  // const pushMutation = usePush(selectedAttempt?.id);
 
   const [merging, setMerging] = useState(false);
-  const [pushing, setPushing] = useState(false);
+  // Deprecated local push state; pushing handled elsewhere if needed
   const [rebasing, setRebasing] = useState(false);
   const [copied, setCopied] = useState(false);
   const [mergeSuccess, setMergeSuccess] = useState(false);
-  const [pushSuccess, setPushSuccess] = useState(false);
+  // const [pushSuccess, setPushSuccess] = useState(false);
+  const handleSpinoffClick = () => {
+    openTaskForm({
+      projectId,
+      initialBaseBranch: selectedAttempt.branch || selectedAttempt.base_branch,
+      parentTaskAttemptId: selectedAttempt.id,
+    });
+  };
+  const [editingHead, setEditingHead] = useState(false);
+  const [newHeadBranch, setNewHeadBranch] = useState<string>('');
 
   const handleViewDevServerLogs = () => {
     if (latestDevServerProcess) {
@@ -183,19 +194,7 @@ function CurrentAttempt({
     await performMerge();
   };
 
-  const handlePushClick = async () => {
-    try {
-      setPushing(true);
-      await pushMutation.mutateAsync();
-      setError(null); // Clear any previous errors on success
-      setPushSuccess(true);
-      setTimeout(() => setPushSuccess(false), 2000);
-    } catch (error: any) {
-      setError(error.message || 'Failed to push changes');
-    } finally {
-      setPushing(false);
-    }
-  };
+  // push handled as part of PR button when applicable
 
   const performMerge = async () => {
     try {
@@ -223,6 +222,21 @@ function CurrentAttempt({
       setRebasing(false);
     }
   };
+
+  const handleHeadBranchChange = useCallback(async () => {
+    if (!selectedAttempt?.id || !newHeadBranch.trim()) return;
+    try {
+      await attemptsApi.updateBranch(selectedAttempt.id, newHeadBranch.trim());
+      setError(null);
+      setEditingHead(false);
+      // Refresh branch status and attempt fetchers if any rely on it
+      queryClient.invalidateQueries({ queryKey: ['branchStatus', selectedAttempt.id] });
+      // Optimistically update selectedAttempt in UI
+      setSelectedAttempt({ ...selectedAttempt, branch: newHeadBranch.trim() });
+    } catch (error: any) {
+      setError(error.message || 'Failed to update branch');
+    }
+  }, [newHeadBranch, selectedAttempt, setError, queryClient, setSelectedAttempt]);
 
   const handleRebaseWithNewBranch = async (newBaseBranch: string) => {
     try {
@@ -488,15 +502,60 @@ function CurrentAttempt({
         </div>
 
         <div className="min-w-0">
-          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">
-            Task Branch
+          <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">
+            <span>Task Branch</span>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="xs"
+                    onClick={() => {
+                      setNewHeadBranch(selectedAttempt?.branch || '');
+                      setEditingHead((v) => !v);
+                    }}
+                    className="h-4 w-4 p-0 hover:bg-muted"
+                  >
+                    <Settings className="h-3 w-3" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Edit task branch</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           </div>
-          <div className="flex items-center gap-1.5">
-            <GitBranchIcon className="h-3 w-3 text-muted-foreground" />
-            <span className="text-sm font-medium">
-              {selectedAttempt.branch}
-            </span>
-          </div>
+          {editingHead ? (
+            <div className="flex items-center gap-2">
+              <select
+                className="border rounded px-2 py-1 text-sm min-w-[10rem]"
+                value={newHeadBranch}
+                onChange={(e) => setNewHeadBranch(e.target.value)}
+              >
+                <option value="" disabled>
+                  Select branch
+                </option>
+                {(branches || []).map((b) => (
+                  <option key={b.name} value={b.name}>
+                    {b.name}
+                  </option>
+                ))}
+              </select>
+              <Button variant="default" size="xs" className="h-7" onClick={handleHeadBranchChange}>
+                Save
+              </Button>
+              <Button variant="ghost" size="xs" className="h-7" onClick={() => setEditingHead(false)}>
+                Cancel
+              </Button>
+            </div>
+          ) : (
+            <div className="flex items-center gap-1.5">
+              <GitBranchIcon className="h-3 w-3 text-muted-foreground" />
+              <span className="text-sm font-medium">
+                {selectedAttempt.branch}
+              </span>
+            </div>
+          )}
         </div>
 
         <div className="min-w-0">
@@ -697,14 +756,10 @@ function CurrentAttempt({
                   onClick={handlePRButtonClick}
                   disabled={
                     creatingPR ||
-                    pushing ||
                     Boolean((branchStatus.commits_behind ?? 0) > 0) ||
                     isAttemptRunning ||
-                    (mergeInfo.hasOpenPR &&
-                      branchStatus.remote_commits_ahead === 0) ||
                     ((branchStatus.commits_ahead ?? 0) === 0 &&
                       (branchStatus.remote_commits_ahead ?? 0) === 0 &&
-                      !pushSuccess &&
                       !mergeSuccess)
                   }
                   variant="outline"
@@ -712,39 +767,8 @@ function CurrentAttempt({
                   className="border-blue-300 text-blue-700 hover:bg-blue-50 gap-1 min-w-[120px]"
                 >
                   <GitPullRequest className="h-3 w-3" />
-                  {mergeInfo.hasOpenPR
-                    ? pushSuccess
-                      ? 'Pushed!'
-                      : pushing
-                        ? 'Pushing...'
-                        : branchStatus.remote_commits_ahead === 0
-                          ? 'Push to PR'
-                          : branchStatus.remote_commits_ahead === 1
-                            ? 'Push 1 commit'
-                            : `Push ${branchStatus.remote_commits_ahead || 0} commits`
-                    : creatingPR
-                      ? 'Creating...'
-                      : 'Create PR'}
+                  {mergeInfo.hasOpenPR ? 'Open PR' : creatingPR ? 'Creating...' : 'Create PR'}
                 </Button>
-
-                {/* Open PR button when there is an open PR and nothing to push */}
-                {mergeInfo.hasOpenPR &&
-                  (branchStatus.remote_commits_ahead ?? 0) === 0 && (
-                    <Button
-                      onClick={() => {
-                        const url = mergeInfo.openPR?.type === 'pr'
-                          ? mergeInfo.openPR.pr_info.url
-                          : undefined;
-                        if (url) window.open(url, '_blank');
-                      }}
-                      variant="outline"
-                      size="xs"
-                      className="border-blue-300 text-blue-700 hover:bg-blue-50 gap-1"
-                    >
-                      <ExternalLink className="h-3 w-3" />
-                      Open PR
-                    </Button>
-                  )}
                 <Button
                   onClick={handleMergeClick}
                   disabled={
@@ -752,9 +776,7 @@ function CurrentAttempt({
                     merging ||
                     Boolean((branchStatus.commits_behind ?? 0) > 0) ||
                     isAttemptRunning ||
-                    ((branchStatus.commits_ahead ?? 0) === 0 &&
-                      !pushSuccess &&
-                      !mergeSuccess)
+                    ((branchStatus.commits_ahead ?? 0) === 0 && !mergeSuccess)
                   }
                   size="xs"
                   className="bg-green-600 hover:bg-green-700 disabled:bg-gray-400 gap-1 min-w-[120px]"
@@ -791,6 +813,16 @@ function CurrentAttempt({
                 </Button>
               ) : null
             )}
+            <Button
+              variant="outline"
+              size="xs"
+              onClick={handleSpinoffClick}
+              className="gap-1"
+              title="Create a new task from this attempt"
+            >
+              <GitFork className="h-3 w-3" />
+              Spinoff
+            </Button>
             {showHistory && taskAttempts.length > 1 && (
               <DropdownMenu>
                 <TooltipProvider>

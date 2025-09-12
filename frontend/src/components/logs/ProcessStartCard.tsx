@@ -203,7 +203,7 @@ function ProcessStartCard({
                       if (restoreDisabled) return;
                       onRestore(restoreProcessId || payload.processId);
                     }}
-                    aria-label="Restore to this checkpoint"
+                    aria-label="Edit & Retry at this checkpoint"
                     disabled={!!restoreDisabled}
                   >
                     <History className="h-4 w-4" />
@@ -212,8 +212,8 @@ function ProcessStartCard({
                 <TooltipContent>
                   {restoreDisabled
                     ? restoreDisabledReason ||
-                      'Restore is currently unavailable.'
-                    : 'Restore'}
+                      'Edit & Retry is currently unavailable.'
+                    : 'Edit & Retry'}
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>

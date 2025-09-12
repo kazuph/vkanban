@@ -10,6 +10,8 @@ interface MarkdownRendererProps {
 }
 
 function MarkdownRenderer({ content, className = '', repoUrlBase }: MarkdownRendererProps) {
+  // Keep legacy prop from callers to avoid breakage
+  void repoUrlBase;
   // Note: we intentionally do NOT linkify "#123" to a repo.
   // Different projects may point to different repositories and a global base is not appropriate.
   const components: Components = useMemo(
