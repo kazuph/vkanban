@@ -177,7 +177,7 @@ export function AttemptHeaderCard({
         </div>
       
         <div className="pr-3 flex items-center gap-2">
-          {selectedAttempt && (
+          {selectedAttempt && attempts.length > 1 && (
             <Button
               variant="destructive"
               size="xs"
@@ -186,7 +186,7 @@ export function AttemptHeaderCard({
               title="Delete current attempt"
             >
               <Trash2 className="h-3 w-3" />
-              Delete
+              Delete Attempt
             </Button>
           )}
           {onCreateNewAttempt && (

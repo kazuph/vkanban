@@ -19,8 +19,8 @@ import {
 import { FolderOpen } from 'lucide-react';
 import type { TaskWithAttemptStatus } from 'shared/types';
 import type { TaskPrStatus } from '@/lib/api';
-import { GitPullRequest } from 'lucide-react';
 import { projectsApi } from '@/lib/api';
+// (Tooltip removed for PR status; using bottom bar design instead)
 
 type Task = TaskWithAttemptStatus;
 
@@ -151,19 +151,6 @@ export function TaskCard({
         {task.last_attempt_failed && !task.has_merged_attempt && (
           <XCircle className="h-3 w-3 text-destructive" />
         )}
-        {/* Open PR Indicator */}
-        {prStatus?.has_open_pr && (
-          <button
-            className="p-0.5 rounded hover:bg-muted"
-            title="Open PR"
-            onClick={(e) => {
-              e.stopPropagation();
-              if (prStatus.open_pr_url) window.open(prStatus.open_pr_url, '_blank');
-            }}
-          >
-            <GitPullRequest className="h-3 w-3 text-blue-600" />
-          </button>
-        )}
       </div>
 
       <div className="flex flex-1 gap-2 items-center min-w-0 pr-8">
@@ -178,6 +165,60 @@ export function TaskCard({
             : task.description}
         </p>
       )}
+
+      {/* PR status footer: compact pill badge (yellow theme) */}
+      {prStatus && (() => {
+        const pillBase =
+          'inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-mono lowercase tracking-tight border';
+        let node: React.ReactNode = null;
+
+        // open > merged > closed; else hide (no badge)
+        if (prStatus.has_open_pr && prStatus.open_pr_url) {
+          const cls = `${pillBase} bg-[hsl(var(--info)/0.15)] text-[hsl(var(--info))] border-[hsl(var(--info)/0.35)] hover:bg-[hsl(var(--info)/0.25)]`;
+          node = (
+            <button
+              className={cls}
+              onClick={(e) => {
+                e.stopPropagation();
+                window.open(prStatus.open_pr_url!, '_blank');
+              }}
+              aria-label="Open PR"
+            >
+              pr open
+            </button>
+          );
+        } else if (prStatus.latest_pr_status === 'merged' && prStatus.latest_pr_url) {
+          const cls = `${pillBase} bg-[hsl(var(--success)/0.15)] text-[hsl(var(--success))] border-[hsl(var(--success)/0.35)] hover:bg-[hsl(var(--success)/0.25)]`;
+          node = (
+            <button
+              className={cls}
+              onClick={(e) => {
+                e.stopPropagation();
+                window.open(prStatus.latest_pr_url!, '_blank');
+              }}
+              aria-label="Open merged PR"
+            >
+              pr merged
+            </button>
+          );
+        } else if (prStatus.latest_pr_status === 'closed' && prStatus.latest_pr_url) {
+          const cls = `${pillBase} bg-[hsl(var(--destructive)/0.15)] text-[hsl(var(--destructive))] border-[hsl(var(--destructive)/0.35)] hover:bg-[hsl(var(--destructive)/0.25)]`;
+          node = (
+            <button
+              className={cls}
+              onClick={(e) => {
+                e.stopPropagation();
+                window.open(prStatus.latest_pr_url!, '_blank');
+              }}
+              aria-label="Open closed PR"
+            >
+              pr closed
+            </button>
+          );
+        }
+
+        return node ? <div className="mt-2">{node}</div> : null;
+      })()}
     </KanbanCard>
   );
 }
