@@ -464,6 +464,12 @@ function CreateAttempt({
               className="w-full text-xs px-2 py-2 border-input"
               rows={4}
             />
+            {initialPrompt && (
+              <div className="mt-1 text-[11px] text-muted-foreground/90 text-right">
+                {initialPrompt.length.toLocaleString()} chars, ~
+                {Math.max(1, Math.round(initialPrompt.length / 3.5)).toLocaleString()} tokens (est.)
+              </div>
+            )}
           </div>
 
           {/* Step 5: Start Attempt */}

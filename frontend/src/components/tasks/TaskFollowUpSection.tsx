@@ -273,6 +273,12 @@ export function TaskFollowUpSection({
                   rows={1}
                   maxRows={6}
                 />
+                {followUpMessage && (
+                  <div className="mt-1 text-[11px] text-muted-foreground/90 text-right">
+                    {followUpMessage.length.toLocaleString()} chars, ~
+                    {Math.max(1, Math.round(followUpMessage.length / 3.5)).toLocaleString()} tokens (est.)
+                  </div>
+                )}
               </div>
               <div className="flex flex-row">
                 <div className="flex-1 flex gap-2">
