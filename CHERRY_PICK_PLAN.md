@@ -19,7 +19,7 @@ Working branch: audit/upstream-2025-09-12
 | 12 | `cec320cf` | 2025-09-09 | Fix frontend variant cycle (vibe-kanban) (#668) | ✅ |  |
 | 13 | `465f14ce` | 2025-09-09 | Switch for diff split vs inline view (#653) | ☐ |  |
 | 14 | `05e68dad` | 2025-09-09 | normalize save button on settings pages, remove unnecessary scroll on settings page, fix separator color in navbar dropdown menu (#662) | ☐ |  |
-| 15 | `6c42fc3a` | 2025-09-09 | Improve repo discovery performance (vibe-kanban) (#666) | ☐ |  |
+| 15 | `6c42fc3a` | 2025-09-09 | Improve repo discovery performance (vibe-kanban) (#666) | ✅ |  |
 | 16 | `09065655` | 2025-09-09 | Draft saving and queuing support for followups (#646) | ☐ |  |
 | 17 | `afd3674d` | 2025-09-09 | Show branch selector in create new task (vibe-kanban) (#637) | ☐ |  |
 | 18 | `201109ff` | 2025-09-09 | Set PR branch (vibe-kanban) (#638) | ☐ |  |
