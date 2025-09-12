@@ -99,7 +99,7 @@ export const RestoreLogsDialog = NiceModal.create<RestoreLogsDialogProps>(
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 mb-3 md:mb-4">
               <AlertTriangle className="h-4 w-4 text-destructive" /> Confirm
-              Restore
+              Edit & Retry
             </DialogTitle>
             <DialogDescription className="mt-6 break-words">
               <div className="space-y-3">
@@ -165,7 +165,7 @@ export const RestoreLogsDialog = NiceModal.create<RestoreLogsDialogProps>(
                       }
                     />
                     <div className="text-sm min-w-0 w-full break-words">
-                      <p className="font-medium mb-2">Reset worktree</p>
+                      <p className="font-medium mb-2">Switch worktree</p>
                       <div
                         className="mt-2 w-full flex items-center cursor-pointer select-none"
                         role="switch"
@@ -197,7 +197,7 @@ export const RestoreLogsDialog = NiceModal.create<RestoreLogsDialogProps>(
                       {worktreeResetOn && (
                         <>
                           <p className="mt-2 text-xs text-muted-foreground">
-                            Your worktree will be restored to this commit.
+                            Edit & Retry will switch your worktree to this commit.
                           </p>
                           <div className="mt-1 flex items-center gap-2 min-w-0">
                             <GitCommit className="h-3.5 w-3.5 text-muted-foreground" />
@@ -258,9 +258,7 @@ export const RestoreLogsDialog = NiceModal.create<RestoreLogsDialogProps>(
                   >
                     <AlertTriangle className="h-4 w-4 text-destructive mt-0.5" />
                     <div className="text-sm min-w-0 w-full break-words">
-                      <p className="font-medium text-destructive">
-                        Reset worktree
-                      </p>
+                      <p className="font-medium text-destructive">Switch worktree</p>
                       <div
                         className={`mt-2 w-full flex items-center select-none ${forceReset ? 'cursor-pointer' : 'opacity-60 cursor-not-allowed'}`}
                         role="switch"
@@ -334,7 +332,7 @@ export const RestoreLogsDialog = NiceModal.create<RestoreLogsDialogProps>(
                       {short && (
                         <>
                           <p className="mt-2 text-xs text-muted-foreground">
-                            Your worktree will be restored to this commit.
+                            Edit & Retry will switch your worktree to this commit.
                           </p>
                           <div className="mt-1 flex items-center gap-2 min-w-0">
                             <GitCommit className="h-3.5 w-3.5 text-muted-foreground" />
@@ -378,7 +376,7 @@ export const RestoreLogsDialog = NiceModal.create<RestoreLogsDialogProps>(
               disabled={!hasChanges}
               onClick={handleConfirm}
             >
-              {hasChanges ? 'Restore' : 'Nothing to change'}
+              {hasChanges ? 'Edit & Retry' : 'Nothing to change'}
             </Button>
           </DialogFooter>
         </DialogContent>
