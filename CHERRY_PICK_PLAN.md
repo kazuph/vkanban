@@ -20,18 +20,18 @@ Working branch: audit/upstream-2025-09-12
 | 13 | `465f14ce` | 2025-09-09 | Switch for diff split vs inline view (#653) | ✅ | conflict-port (local minimal toggle) |
 | 14 | `05e68dad` | 2025-09-09 | normalize save button on settings pages, remove unnecessary scroll on settings page, fix separator color in navbar dropdown menu (#662) | ✅ |  |
 | 15 | `6c42fc3a` | 2025-09-09 | Improve repo discovery performance (vibe-kanban) (#666) | ✅ |  |
-| 16 | `09065655` | 2025-09-09 | Draft saving and queuing support for followups (#646) | ☐ |  |
+| 16 | `09065655` | 2025-09-09 | Draft saving and queuing support for followups (#646) | ☐ | skip (requires queue/draft infra) |
 | 17 | `afd3674d` | 2025-09-09 | Show branch selector in create new task (vibe-kanban) (#637) | ✅ | conflict-port (CreateAttempt uses BranchSelector) |
 | 18 | `201109ff` | 2025-09-09 | Set PR branch (vibe-kanban) (#638) | ✅ |  |
 | 19 | `75b5595a` | 2025-09-09 | Add spinoff button (vibe-kanban) (#639) | ✅ | conflict-port (CurrentAttempt minimal spinoff) |
-| 20 | `d87f6d71` | 2025-09-09 | Visualize task relationships (vibe-kanban) (#665) | ☐ |  |
+| 20 | `d87f6d71` | 2025-09-09 | Visualize task relationships (vibe-kanban) (#665) | ☐ | defer (large UI integration) |
 | 21 | `2c8eb0ca` | 2025-09-10 | fix: close GitHub dialog box (vibe-kanban) (#663) | ✅ |  |
 | 22 | `c79f0a20` | 2025-09-10 | Add diff spinner timeout (#660) | ✅ |  |
 | 23 | `4c5be4e8` | 2025-09-10 | feat: one click installation for popular MCP servers (#657) | ☐ |  |
 | 24 | `89beac2d` | 2025-09-10 | Collect richer logs from opencode (#655) | ✅ |  |
 | 25 | `93994eef` | 2025-09-10 | remove duplicate code in the comprehensive variant of the worktree cleanup implementation (#672) | ✅ |  |
-| 26 | `2b7125d4` | 2025-09-10 | Clarify draft saving status messages (#675) | ☐ |  |
-| 27 | `3a9c1319` | 2025-09-10 | Replace Restore with Edit & Retry (#674) | ☐ |  |
+| 26 | `2b7125d4` | 2025-09-10 | Clarify draft saving status messages (#675) | ☐ | skip (no draft feature locally) |
+| 27 | `3a9c1319` | 2025-09-10 | Replace Restore with Edit & Retry (#674) | ✅ | conflict-port (label/text only) |
 | 28 | `7547683a` | 2025-09-10 | Use generic branchselector in PR dialog (#680) | ✅ | conflict-port (PR dialog uses BranchSelector) |
 | 29 | `a722d284` | 2025-09-10 | remove flex (#681) | ✅ | applied (App scroll container) |
 | 30 | `ad11758c` | 2025-09-10 | ## ✅ Task Completed Successfully (#683) | ☐ |  |
