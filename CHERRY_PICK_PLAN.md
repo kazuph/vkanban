@@ -35,7 +35,7 @@ Working branch: audit/upstream-2025-09-12
 | 28 | `7547683a` | 2025-09-10 | Use generic branchselector in PR dialog (#680) | ✅ | conflict-port (PR dialog uses BranchSelector) |
 | 29 | `a722d284` | 2025-09-10 | remove flex (#681) | ✅ | applied (App scroll container) |
 | 30 | `ad11758c` | 2025-09-10 | ## ✅ Task Completed Successfully (#683) | ☐ |  |
-| 31 | `3db31593` | 2025-09-11 | introduce docs by powered by Mintlify (#679) | ☐ |  |
+| 31 | `3db31593` | 2025-09-11 | introduce docs by powered by Mintlify (#679) | ✅ |  |
 | 32 | `b23b2cdc` | 2025-09-11 | Repo discovery from home dir (vibe-kanban) (#682) | ✅ |  |
 | 33 | `342485ae` | 2025-09-11 | Fix session_start event (vibe-kanban) (#669) | ✅ |  |
 | 34 | `e2b2dd10` | 2025-09-11 | Add model config for claude-code (#685) | ☐ |  |
