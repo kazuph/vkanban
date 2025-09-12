@@ -37,7 +37,7 @@ Working branch: audit/upstream-2025-09-12
 | 30 | `ad11758c` | 2025-09-10 | ## ✅ Task Completed Successfully (#683) | ☐ |  |
 | 31 | `3db31593` | 2025-09-11 | introduce docs by powered by Mintlify (#679) | ☐ |  |
 | 32 | `b23b2cdc` | 2025-09-11 | Repo discovery from home dir (vibe-kanban) (#682) | ☐ |  |
-| 33 | `342485ae` | 2025-09-11 | Fix session_start event (vibe-kanban) (#669) | ☐ |  |
+| 33 | `342485ae` | 2025-09-11 | Fix session_start event (vibe-kanban) (#669) | ✅ |  |
 | 34 | `e2b2dd10` | 2025-09-11 | Add model config for claude-code (#685) | ☐ |  |
 | 35 | `37f83fe4` | 2025-09-11 | Merge leaves uncommitted changes (vibe-kanban) (#676) | ☐ |  |
 | 36 | `99a1b441` | 2025-09-11 | tweak styling of message editing' (#689) | ☐ |  |
