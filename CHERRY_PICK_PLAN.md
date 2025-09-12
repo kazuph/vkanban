@@ -29,7 +29,7 @@ Working branch: audit/upstream-2025-09-12
 | 22 | `c79f0a20` | 2025-09-10 | Add diff spinner timeout (#660) | ☐ |  |
 | 23 | `4c5be4e8` | 2025-09-10 | feat: one click installation for popular MCP servers (#657) | ☐ |  |
 | 24 | `89beac2d` | 2025-09-10 | Collect richer logs from opencode (#655) | ☐ |  |
-| 25 | `93994eef` | 2025-09-10 | remove duplicate code in the comprehensive variant of the worktree cleanup implementation (#672) | ☐ |  |
+| 25 | `93994eef` | 2025-09-10 | remove duplicate code in the comprehensive variant of the worktree cleanup implementation (#672) | ✅ |  |
 | 26 | `2b7125d4` | 2025-09-10 | Clarify draft saving status messages (#675) | ☐ |  |
 | 27 | `3a9c1319` | 2025-09-10 | Replace Restore with Edit & Retry (#674) | ☐ |  |
 | 28 | `7547683a` | 2025-09-10 | Use generic branchselector in PR dialog (#680) | ☐ |  |
