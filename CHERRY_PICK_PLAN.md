@@ -11,7 +11,7 @@ Working branch: audit/upstream-2025-09-12
 |  4 | `ce14ee93` | 2025-09-08 | fix: follow up bug (#656) | ☐ |  |
 |  5 | `1398b11c` | 2025-09-08 | chore: bump version to 0.0.80 | ☐ |  |
 |  6 | `f2585fd7` | 2025-09-08 | Done! I successfully removed the claude code router (ccr) from the default profiles by: (#652) | ✅ |  |
-|  7 | `c7d49584` | 2025-09-09 | Pin codex version (#659) | ☐ |  |
+|  7 | `c7d49584` | 2025-09-09 | Pin codex version (#659) | ✅ |  |
 |  8 | `913c77d8` | 2025-09-09 | chore: bump version to 0.0.81 | ☐ |  |
 |  9 | `4a1888e3` | 2025-09-09 | fix repo card horizonal overflow (#649) | ☐ |  |
 | 10 | `70497c4c` | 2025-09-09 | improve Release notes dialog styling (#661) | ☐ |  |
