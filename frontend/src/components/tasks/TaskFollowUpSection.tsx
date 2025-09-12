@@ -104,7 +104,7 @@ export function TaskFollowUpSection({
     'default' | 'low' | 'medium' | 'high' | 'custom'
   >('high');
   const [codexCustomModel, setCodexCustomModel] = useState<string>('');
-  const [claudeModel, setClaudeModel] = useState<'default' | 'sonnet' | 'opus'>('sonnet');
+  const [claudeModel, setClaudeModel] = useState<'default' | 'sonnet' | 'opus'>('default');
 
   // NOTE: base executor now selected via selectedBaseExecutor
 
@@ -138,6 +138,23 @@ export function TaskFollowUpSection({
     if (!selectedBaseExecutor || !profiles) return null;
     return profiles?.[selectedBaseExecutor];
   }, [selectedBaseExecutor, profiles]);
+
+  // Derive CLAUDE_CODE default model from configuration (if present)
+  useEffect(() => {
+    if (selectedBaseExecutor !== 'CLAUDE_CODE' || !currentProfile) return;
+    setClaudeModel((prev) => {
+      if (prev !== 'default') return prev; // respect explicit user selection
+      try {
+        const variants = Object.keys(currentProfile);
+        const key = selectedVariant || variants[0] || 'DEFAULT';
+        const cfg = (currentProfile as any)?.[key]?.CLAUDE_CODE || {};
+        const m = (cfg.model || '').toLowerCase();
+        return m === 'sonnet' || m === 'opus' ? m : 'default';
+      } catch {
+        return 'default';
+      }
+    });
+  }, [selectedBaseExecutor, currentProfile, selectedVariant]);
 
   // Update selectedVariant when defaultFollowUpVariant changes
   useEffect(() => {

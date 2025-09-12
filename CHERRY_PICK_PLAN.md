@@ -38,11 +38,11 @@ Working branch: audit/upstream-2025-09-12
 | 31 | `3db31593` | 2025-09-11 | introduce docs by powered by Mintlify (#679) | ✅ |  |
 | 32 | `b23b2cdc` | 2025-09-11 | Repo discovery from home dir (vibe-kanban) (#682) | ✅ |  |
 | 33 | `342485ae` | 2025-09-11 | Fix session_start event (vibe-kanban) (#669) | ✅ |  |
-| 34 | `e2b2dd10` | 2025-09-11 | Add model config for claude-code (#685) | ☐ |  |
+| 34 | `e2b2dd10` | 2025-09-11 | Add model config for claude-code (#685) | ✅ | covered locally (UI honors profile.model) |
 | 35 | `37f83fe4` | 2025-09-11 | Merge leaves uncommitted changes (vibe-kanban) (#676) | ✅ |  |
 | 36 | `99a1b441` | 2025-09-11 | tweak styling of message editing' (#689) | ☐ |  |
 | 37 | `627f46b3` | 2025-09-11 | fix: `ExecutorProfileSelector` inconsistencies (#687) | ☐ |  |
 | 38 | `aca27c79` | 2025-09-11 | Remove the "No resets required" message (#690) | ☐ | N/A in local (string not present) |
 | 39 | `fa8af062` | 2025-09-11 | chore: bump version to 0.0.82 | ☐ |  |
-| 40 | `1db2e011` | 2025-09-11 | Document CCR setup & usage (#691) | ☐ |  |
+| 40 | `1db2e011` | 2025-09-11 | Document CCR setup & usage (#691) | ✅ | docs updated under docs/supported-coding-agents/ccr.mdx |
 | 41 | `a086f82d` | 2025-09-11 | feat: support Codex `--full-auto` mode (#664) | ✅ |  |

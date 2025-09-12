@@ -1,4 +1,4 @@
-import { Dispatch, SetStateAction, useCallback, useState } from 'react';
+import { Dispatch, SetStateAction, useCallback, useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button.tsx';
 import { ArrowDown, Settings2, X } from 'lucide-react';
 import {
@@ -48,13 +48,36 @@ function CreateAttempt({
   const { isAttemptRunning } = useAttemptExecution(selectedAttempt?.id);
   const { createAttempt, isCreating } = useAttemptCreation(task.id);
   const [initialPrompt, setInitialPrompt] = useState('');
-  const [claudeModel, setClaudeModel] = useState<'default' | 'sonnet' | 'opus'>('sonnet');
+  const [claudeModel, setClaudeModel] = useState<'default' | 'sonnet' | 'opus'>('default');
   // Codex-only model/effort selector for the first follow-up
   const [codexReasoning, setCodexReasoning] = useState<
     'default' | 'low' | 'medium' | 'high' | 'custom'
   >('high');
   const [codexCustomModel, setCodexCustomModel] = useState('');
   const [reuseBranch, setReuseBranch] = useState(false);
+
+  // When CLAUDE_CODE is selected, prefer configured default model from profiles
+  // but keep 'default' to defer to server-side configuration unless user changes
+  const deriveClaudeDefault = useCallback((): 'default' | 'sonnet' | 'opus' => {
+    try {
+      if ((selectedProfile?.executor as any) !== 'CLAUDE_CODE') return 'default';
+      const exec = selectedProfile?.executor || '';
+      const all = availableProfiles?.[exec] as any;
+      if (!all || typeof all !== 'object') return 'default';
+      const variantKey = selectedProfile?.variant || Object.keys(all)[0] || 'DEFAULT';
+      const cfg = (all?.[variantKey]?.CLAUDE_CODE || {}) as any;
+      const m = (cfg.model || '').toLowerCase();
+      if (m === 'sonnet' || m === 'opus') return m;
+      return 'default';
+    } catch {
+      return 'default';
+    }
+  }, [selectedProfile?.executor, selectedProfile?.variant, availableProfiles]);
+
+  // Sync default when profile changes (only if user hasn't explicitly chosen)
+  useEffect(() => {
+    setClaudeModel((prev) => (prev === 'default' ? deriveClaudeDefault() : prev));
+  }, [deriveClaudeDefault]);
 
   // Create attempt logic
   const actuallyCreateAttempt = useCallback(

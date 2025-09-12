@@ -1,9 +1,49 @@
 # CCR (Claude Code Router)
 
-## Installation
+CCR is an optional router for Claude Code that can split requests between models or apply custom routing logic.
 
-CCR is now available via `npx` - no separate installation required!
+> Note: The default profiles in this fork do not include CCR by default (see upstream #652). You can still enable it manually using the steps below.
 
-## Authentication
+## Quick Start
 
-You need to authenticate with CCR outside of Vibe Kanban before using it. Please follow the authentication instructions on the [CCR GitHub page](https://github.com/musistudio/claude-code-router).
+1. Install / Use via npx
+
+   CCR can be run via npx without a global install:
+
+   ```bash
+   npx claude-code-router@latest --help
+   ```
+
+2. Authenticate
+
+   Authenticate CCR as documented in the official repo:
+   - GitHub: https://github.com/musistudio/claude-code-router
+
+3. Enable in profiles (Agent Settings)
+
+   - Open Settings → Agents
+   - Create or edit a configuration for `CLAUDE_CODE`
+   - Set `base_command_override` to the CCR command (for example):
+     ```json
+     {
+       "base_command_override": "npx claude-code-router",
+       "model": "sonnet"
+     }
+     ```
+   - Optionally add `additional_params` if you need extra CLI flags
+
+4. Use in attempts / follow-ups
+
+   - Choose the CLAUDE_CODE executor and your configuration
+   - Leave model selector as `default` to use the profile’s `model` value
+
+## Tips
+
+- If you set `model` in the profile, the UI will treat `default` as “use profile’s model”.
+- You can still override per-message by choosing a specific model in the dropdown.
+
+## Troubleshooting
+
+- Ensure your terminal can run `npx claude-code-router` from the working directory
+- If CCR fails to start, check PATH and network proxy settings
+- For permission issues, consult the CCR repo and confirm tokens are valid
