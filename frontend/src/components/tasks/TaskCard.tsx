@@ -1,4 +1,4 @@
-import { KeyboardEvent, useCallback, useEffect, useRef } from 'react';
+import { KeyboardEvent, useCallback, useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -50,6 +50,50 @@ export function TaskCard({
   prStatus,
 }: TaskCardProps) {
   const localRef = useRef<HTMLDivElement>(null);
+  const [, forceTick] = useState(0);
+
+  // Re-render periodically so the relative time stays fresh
+  useEffect(() => {
+    const id = setInterval(() => forceTick((t) => t + 1), 60_000);
+    return () => clearInterval(id);
+  }, []);
+
+  const formatTimeAgo = useCallback((date: Date) => {
+    const locale = typeof navigator !== 'undefined' ? navigator.language : 'ja-JP';
+    const diffSec = Math.round((Date.now() - date.getTime()) / 1000);
+    if (diffSec < 45) {
+      return locale.startsWith('ja') ? '今' : 'now';
+    }
+    const units: Array<{
+      unit: Intl.RelativeTimeFormatUnit;
+      secs: number;
+    }> = [
+      { unit: 'minute', secs: 60 },
+      { unit: 'hour', secs: 3600 },
+      { unit: 'day', secs: 86400 },
+      { unit: 'week', secs: 604800 },
+      { unit: 'month', secs: 2629800 }, // ~30.44 days
+      { unit: 'year', secs: 31557600 }, // ~365.25 days
+    ];
+    let value = diffSec;
+    let unit: Intl.RelativeTimeFormatUnit = 'minute';
+    for (const u of units) {
+      if (diffSec < u.secs) break;
+      unit = u.unit;
+      value = Math.round(diffSec / u.secs);
+    }
+    const rtf = new Intl.RelativeTimeFormat(locale, { numeric: 'auto' });
+    return rtf.format(-value, unit);
+  }, []);
+
+  const formatTooltip = useCallback((date: Date) => {
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const d = String(date.getDate()).padStart(2, '0');
+    const hh = String(date.getHours()).padStart(2, '0');
+    const mm = String(date.getMinutes()).padStart(2, '0');
+    return `${y}年${m}月${d}日 ${hh}:${mm}`;
+  }, []);
   useEffect(() => {
     if (isFocused && localRef.current) {
       localRef.current.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
@@ -166,58 +210,80 @@ export function TaskCard({
         </p>
       )}
 
-      {/* PR status footer: compact pill badge (yellow theme) */}
-      {prStatus && (() => {
+      {/* Bottom footer: PR status (left) + last updated (right) */}
+      {(() => {
         const pillBase =
           'inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-mono lowercase tracking-tight border';
-        let node: React.ReactNode = null;
+        let prNode: React.ReactNode = null;
 
-        // open > merged > closed; else hide (no badge)
-        if (prStatus.has_open_pr && prStatus.open_pr_url) {
-          const cls = `${pillBase} bg-[hsl(var(--info)/0.15)] text-[hsl(var(--info))] border-[hsl(var(--info)/0.35)] hover:bg-[hsl(var(--info)/0.25)]`;
-          node = (
-            <button
-              className={cls}
-              onClick={(e) => {
-                e.stopPropagation();
-                window.open(prStatus.open_pr_url!, '_blank');
-              }}
-              aria-label="Open PR"
-            >
-              pr open
-            </button>
-          );
-        } else if (prStatus.latest_pr_status === 'merged' && prStatus.latest_pr_url) {
-          const cls = `${pillBase} bg-[hsl(var(--success)/0.15)] text-[hsl(var(--success))] border-[hsl(var(--success)/0.35)] hover:bg-[hsl(var(--success)/0.25)]`;
-          node = (
-            <button
-              className={cls}
-              onClick={(e) => {
-                e.stopPropagation();
-                window.open(prStatus.latest_pr_url!, '_blank');
-              }}
-              aria-label="Open merged PR"
-            >
-              pr merged
-            </button>
-          );
-        } else if (prStatus.latest_pr_status === 'closed' && prStatus.latest_pr_url) {
-          const cls = `${pillBase} bg-[hsl(var(--destructive)/0.15)] text-[hsl(var(--destructive))] border-[hsl(var(--destructive)/0.35)] hover:bg-[hsl(var(--destructive)/0.25)]`;
-          node = (
-            <button
-              className={cls}
-              onClick={(e) => {
-                e.stopPropagation();
-                window.open(prStatus.latest_pr_url!, '_blank');
-              }}
-              aria-label="Open closed PR"
-            >
-              pr closed
-            </button>
-          );
+        if (prStatus) {
+          // open > merged > closed; else hide (no badge)
+          if (prStatus.has_open_pr && prStatus.open_pr_url) {
+            const cls = `${pillBase} bg-[hsl(var(--info)/0.15)] text-[hsl(var(--info))] border-[hsl(var(--info)/0.35)] hover:bg-[hsl(var(--info)/0.25)]`;
+            prNode = (
+              <button
+                className={cls}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  window.open(prStatus.open_pr_url!, '_blank');
+                }}
+                aria-label="Open PR"
+              >
+                pr open
+              </button>
+            );
+          } else if (
+            prStatus.latest_pr_status === 'merged' &&
+            prStatus.latest_pr_url
+          ) {
+            const cls = `${pillBase} bg-[hsl(var(--success)/0.15)] text-[hsl(var(--success))] border-[hsl(var(--success)/0.35)] hover:bg-[hsl(var(--success)/0.25)]`;
+            prNode = (
+              <button
+                className={cls}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  window.open(prStatus.latest_pr_url!, '_blank');
+                }}
+                aria-label="Open merged PR"
+              >
+                pr merged
+              </button>
+            );
+          } else if (
+            prStatus.latest_pr_status === 'closed' &&
+            prStatus.latest_pr_url
+          ) {
+            const cls = `${pillBase} bg-[hsl(var(--destructive)/0.15)] text-[hsl(var(--destructive))] border-[hsl(var(--destructive)/0.35)] hover:bg-[hsl(var(--destructive)/0.25)]`;
+            prNode = (
+              <button
+                className={cls}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  window.open(prStatus.latest_pr_url!, '_blank');
+                }}
+                aria-label="Open closed PR"
+              >
+                pr closed
+              </button>
+            );
+          }
         }
 
-        return node ? <div className="mt-2">{node}</div> : null;
+        const updated = new Date(task.updated_at);
+        const updatedText = formatTimeAgo(updated);
+        const tooltip = formatTooltip(updated);
+
+        return (
+          <div className="mt-2 flex items-center justify-between">
+            <div>{prNode}</div>
+            <div
+              className="ml-2 text-[11px] text-muted-foreground whitespace-nowrap"
+              title={tooltip}
+            >
+              {updatedText}
+            </div>
+          </div>
+        );
       })()}
     </KanbanCard>
   );
