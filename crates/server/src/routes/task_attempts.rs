@@ -35,6 +35,7 @@ use services::services::{
     container::ContainerService,
     github_service::{CreatePrRequest, GitHubService, GitHubServiceError},
     image::ImageService,
+    worktree_manager::WorktreeManager,
 };
 use sqlx::Error as SqlxError;
 use ts_rs::TS;
@@ -147,6 +148,11 @@ pub struct CreateGitHubPrRequest {
     pub title: String,
     pub body: Option<String>,
     pub base_branch: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize, TS)]
+pub struct UpdateAttemptBranchRequest {
+    pub branch: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -1490,6 +1496,60 @@ pub async fn rebase_task_attempt(
     Ok(ResponseJson(ApiResponse::success(())))
 }
 
+/// Update the head branch associated with a task attempt and switch the worktree accordingly.
+#[axum::debug_handler]
+pub async fn update_task_attempt_branch(
+    Extension(task_attempt): Extension<TaskAttempt>,
+    State(deployment): State<DeploymentImpl>,
+    Json(payload): Json<UpdateAttemptBranchRequest>,
+) -> Result<ResponseJson<ApiResponse<()>>, ApiError> {
+    let new_branch = payload.branch.trim();
+    if new_branch.is_empty() {
+        return Err(ApiError::TaskAttempt(TaskAttemptError::ValidationError(
+            "Branch name cannot be empty".to_string(),
+        )));
+    }
+
+    // Load context
+    let pool = &deployment.db().pool;
+    let task = task_attempt
+        .parent_task(pool)
+        .await?
+        .ok_or(ApiError::TaskAttempt(TaskAttemptError::TaskNotFound))?;
+    let project = Project::find_by_id(pool, task.project_id)
+        .await?
+        .ok_or(ApiError::Project(ProjectError::ProjectNotFound))?;
+
+    // Validate branch existence (local only for now)
+    if let Err(_e) = deployment
+        .git()
+        .get_branch_oid(std::path::Path::new(&project.git_repo_path), new_branch)
+    {
+        return Err(ApiError::TaskAttempt(TaskAttemptError::BranchNotFound(
+            new_branch.to_string(),
+        )));
+    }
+
+    // Ensure we have a worktree path, then switch the worktree to the target branch safely.
+    let worktree_path = deployment
+        .container()
+        .ensure_container_exists(&task_attempt)
+        .await?;
+
+    WorktreeManager::ensure_worktree_exists(
+        std::path::Path::new(&project.git_repo_path),
+        new_branch,
+        std::path::Path::new(&worktree_path),
+    )
+    .await
+    .map_err(|e| ApiError::TaskAttempt(TaskAttemptError::ValidationError(e.to_string())))?;
+
+    // Persist new branch on the attempt
+    TaskAttempt::update_branch(pool, task_attempt.id, new_branch).await?;
+
+    Ok(ResponseJson(ApiResponse::success(())))
+}
+
 #[derive(serde::Deserialize)]
 pub struct DeleteFileQuery {
     file_path: String,
@@ -1689,6 +1749,7 @@ pub async fn delete_task_attempt(
 pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
     let task_attempt_id_router = Router::new()
         .route("/", get(get_task_attempt).delete(delete_task_attempt))
+        .route("/branch", post(update_task_attempt_branch))
         .route("/follow-up", post(follow_up))
         .route("/plan-to-issue", post(export_plan_to_issue))
         .route("/restore", post(restore_task_attempt))

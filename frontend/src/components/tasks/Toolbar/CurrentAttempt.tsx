@@ -133,6 +133,8 @@ function CurrentAttempt({
   const [copied, setCopied] = useState(false);
   const [mergeSuccess, setMergeSuccess] = useState(false);
   const [pushSuccess, setPushSuccess] = useState(false);
+  const [editingHead, setEditingHead] = useState(false);
+  const [newHeadBranch, setNewHeadBranch] = useState<string>('');
 
   const handleViewDevServerLogs = () => {
     if (latestDevServerProcess) {
@@ -223,6 +225,21 @@ function CurrentAttempt({
       setRebasing(false);
     }
   };
+
+  const handleHeadBranchChange = useCallback(async () => {
+    if (!selectedAttempt?.id || !newHeadBranch.trim()) return;
+    try {
+      await attemptsApi.updateBranch(selectedAttempt.id, newHeadBranch.trim());
+      setError(null);
+      setEditingHead(false);
+      // Refresh branch status and attempt fetchers if any rely on it
+      queryClient.invalidateQueries({ queryKey: ['branchStatus', selectedAttempt.id] });
+      // Optimistically update selectedAttempt in UI
+      setSelectedAttempt({ ...selectedAttempt, branch: newHeadBranch.trim() });
+    } catch (error: any) {
+      setError(error.message || 'Failed to update branch');
+    }
+  }, [newHeadBranch, selectedAttempt, setError, queryClient, setSelectedAttempt]);
 
   const handleRebaseWithNewBranch = async (newBaseBranch: string) => {
     try {
@@ -488,15 +505,60 @@ function CurrentAttempt({
         </div>
 
         <div className="min-w-0">
-          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">
-            Task Branch
+          <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">
+            <span>Task Branch</span>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="xs"
+                    onClick={() => {
+                      setNewHeadBranch(selectedAttempt?.branch || '');
+                      setEditingHead((v) => !v);
+                    }}
+                    className="h-4 w-4 p-0 hover:bg-muted"
+                  >
+                    <Settings className="h-3 w-3" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Edit task branch</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           </div>
-          <div className="flex items-center gap-1.5">
-            <GitBranchIcon className="h-3 w-3 text-muted-foreground" />
-            <span className="text-sm font-medium">
-              {selectedAttempt.branch}
-            </span>
-          </div>
+          {editingHead ? (
+            <div className="flex items-center gap-2">
+              <select
+                className="border rounded px-2 py-1 text-sm min-w-[10rem]"
+                value={newHeadBranch}
+                onChange={(e) => setNewHeadBranch(e.target.value)}
+              >
+                <option value="" disabled>
+                  Select branch
+                </option>
+                {(branches || []).map((b) => (
+                  <option key={b.name} value={b.name}>
+                    {b.name}
+                  </option>
+                ))}
+              </select>
+              <Button variant="default" size="xs" className="h-7" onClick={handleHeadBranchChange}>
+                Save
+              </Button>
+              <Button variant="ghost" size="xs" className="h-7" onClick={() => setEditingHead(false)}>
+                Cancel
+              </Button>
+            </div>
+          ) : (
+            <div className="flex items-center gap-1.5">
+              <GitBranchIcon className="h-3 w-3 text-muted-foreground" />
+              <span className="text-sm font-medium">
+                {selectedAttempt.branch}
+              </span>
+            </div>
+          )}
         </div>
 
         <div className="min-w-0">
