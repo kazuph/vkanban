@@ -101,8 +101,8 @@ export const useProjectTasks = (
     () =>
       Object.values(tasksById).sort(
         (a, b) =>
-          new Date(b.created_at as unknown as string).getTime() -
-          new Date(a.created_at as unknown as string).getTime()
+          new Date(b.updated_at as unknown as string).getTime() -
+          new Date(a.updated_at as unknown as string).getTime()
       ),
     [tasksById]
   );
