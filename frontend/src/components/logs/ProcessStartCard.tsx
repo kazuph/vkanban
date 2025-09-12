@@ -99,6 +99,12 @@ function ProcessStartCard({
 
   const label = getProcessLabel(payload);
 
+  // Debug helpers: show prompt length and rough token estimate when available
+  const prompt = extractPromptFromAction(payload.action) || '';
+  const promptChars = prompt.length;
+  // Very rough heuristic: ~3.5 chars/token across mixed languages
+  const tokenEstimate = promptChars > 0 ? Math.max(1, Math.round(promptChars / 3.5)) : null;
+
   const renderLabelWithLinks = (text: string) => {
     const urlRegex = /https?:\/\/[^\s<'"`]+/gi;
     const nodes: React.ReactNode[] = [];
@@ -220,6 +226,30 @@ function ProcessStartCard({
           )}
         />
       </div>
+      {prompt && (
+        <div className="mt-1 text-[11px] text-muted-foreground/90 leading-4 flex items-center gap-2">
+          <div>
+            <span className="uppercase">Request Size</span>: {promptChars.toLocaleString()} chars
+            {tokenEstimate ? (
+              <>
+                , ~{tokenEstimate.toLocaleString()} tokens (est.)
+              </>
+            ) : null}
+          </div>
+          <button
+            className="underline hover:no-underline"
+            onClick={(e) => {
+              e.stopPropagation();
+              if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+                navigator.clipboard.writeText(prompt);
+              }
+            }}
+            title="Copy full request text"
+          >
+            Copy
+          </button>
+        </div>
+      )}
     </div>
   );
 }

@@ -14,5 +14,7 @@ export interface ProcessStartPayload {
   runReason: string;
   startedAt: string;
   status: string;
+  /** Optional exit code when the process finished with failure */
+  exitCode?: number | bigint | null;
   action?: ExecutorAction;
 }

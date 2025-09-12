@@ -52,6 +52,7 @@ export const useProcessesLogs = (
         runReason: process.run_reason,
         startedAt: process.started_at,
         status: process.status,
+        exitCode: (process.exit_code as any) ?? null,
         action: process.executor_action,
       };
 

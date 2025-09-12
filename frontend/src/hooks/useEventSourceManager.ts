@@ -96,6 +96,7 @@ export const useEventSourceManager = ({
         runReason: process.run_reason,
         startedAt: process.started_at,
         status: process.status,
+        exitCode: (process.exit_code as any) ?? null,
       };
       const processStartEntry = {
         type: 'PROCESS_START' as const,

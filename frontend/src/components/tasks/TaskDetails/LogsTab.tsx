@@ -163,7 +163,7 @@ function LogsTab({ selectedAttempt }: Props) {
     [attemptData.processes?.map((p) => p.status).join(',')]
   );
 
-  const { entries } = useProcessesLogs(filteredProcesses, true);
+  const { entries, error: logsError, isConnected } = useProcessesLogs(filteredProcesses, true);
   const [restoreBusy, setRestoreBusy] = useState(false);
 
   // Combined collapsed processes (auto + user)
@@ -539,6 +539,13 @@ function LogsTab({ selectedAttempt }: Props) {
   return (
     <div className="w-full h-full flex flex-col">
       <div className="flex-1 min-h-0 overflow-hidden">
+        {logsError && (
+          <div className="px-4 pt-3">
+            <div className="text-sm text-destructive">
+              Log stream error: {logsError}
+            </div>
+          </div>
+        )}
         {runningGroupHeader && (
           <div className="sticky top-0 z-20">
             <ProcessGroup
