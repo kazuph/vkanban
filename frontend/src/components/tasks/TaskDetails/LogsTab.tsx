@@ -163,7 +163,7 @@ function LogsTab({ selectedAttempt }: Props) {
     [attemptData.processes?.map((p) => p.status).join(',')]
   );
 
-  const { entries, error: logsError, isConnected } = useProcessesLogs(filteredProcesses, true);
+  const { entries, error: logsError } = useProcessesLogs(filteredProcesses, true);
   const [restoreBusy, setRestoreBusy] = useState(false);
 
   // Combined collapsed processes (auto + user)

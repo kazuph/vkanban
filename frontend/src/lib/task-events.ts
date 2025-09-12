@@ -20,6 +20,8 @@ function normalizeTask(task: Task | TaskWithAttemptStatus): TaskWithAttemptStatu
     updated_at: base.updated_at as string,
     has_in_progress_attempt: base.has_in_progress_attempt ?? false,
     has_merged_attempt: base.has_merged_attempt ?? false,
+    has_open_pr: (base as any).has_open_pr ?? false,
+    open_pr_url: (base as any).open_pr_url ?? null,
     last_attempt_failed: base.last_attempt_failed ?? false,
     executor: (base as any).executor ?? '',
   };
@@ -50,4 +52,3 @@ export function emitTaskDeleted(taskId: string, projectId?: string) {
     })
   );
 }
-

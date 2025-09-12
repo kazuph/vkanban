@@ -128,7 +128,7 @@ function CreateAttempt({
         : null;
       const isClaude = (profile as any).executor === 'CLAUDE_CODE';
 
-      const newAttempt = await createAttempt({
+      await createAttempt({
         profile,
         baseBranch: effectiveBaseBranch,
         reuseBranchAttemptId:

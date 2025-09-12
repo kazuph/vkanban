@@ -34,7 +34,9 @@ export const ProjectFormDialog = NiceModal.create<ProjectFormDialogProps>(
     const [cleanupScript, setCleanupScript] = useState(
       project?.cleanup_script ?? ''
     );
-    const [copyFiles, setCopyFiles] = useState(project?.copy_files ?? '');
+  const [copyFiles, setCopyFiles] = useState(project?.copy_files ?? '');
+  const [workspaceDirs, setWorkspaceDirs] = useState(project?.workspace_dirs ?? '');
+  const [appendPrompt, setAppendPrompt] = useState(project?.append_prompt ?? '');
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
     const [repoMode, setRepoMode] = useState<'existing' | 'new'>('existing');
@@ -52,6 +54,8 @@ export const ProjectFormDialog = NiceModal.create<ProjectFormDialogProps>(
         setDevScript(project.dev_script ?? '');
         setCleanupScript(project.cleanup_script ?? '');
         setCopyFiles(project.copy_files ?? '');
+        setWorkspaceDirs(project.workspace_dirs ?? '');
+        setAppendPrompt(project.append_prompt ?? '');
       } else {
         setName('');
         setGitRepoPath('');
@@ -59,6 +63,8 @@ export const ProjectFormDialog = NiceModal.create<ProjectFormDialogProps>(
         setDevScript('');
         setCleanupScript('');
         setCopyFiles('');
+        setWorkspaceDirs('');
+        setAppendPrompt('');
       }
     }, [project]);
 
@@ -87,6 +93,8 @@ export const ProjectFormDialog = NiceModal.create<ProjectFormDialogProps>(
           dev_script: null,
           cleanup_script: null,
           copy_files: null,
+          workspace_dirs: null,
+          append_prompt: null,
         };
 
         await projectsApi.create(createData);
@@ -126,6 +134,8 @@ export const ProjectFormDialog = NiceModal.create<ProjectFormDialogProps>(
             dev_script: devScript.trim() || null,
             cleanup_script: cleanupScript.trim() || null,
             copy_files: copyFiles.trim() || null,
+            workspace_dirs: workspaceDirs.trim() || null,
+            append_prompt: appendPrompt.trim() || null,
           };
 
           await projectsApi.update(project!.id, updateData);
@@ -139,6 +149,8 @@ export const ProjectFormDialog = NiceModal.create<ProjectFormDialogProps>(
             dev_script: null,
             cleanup_script: null,
             copy_files: null,
+            workspace_dirs: workspaceDirs.trim() || null,
+            append_prompt: appendPrompt.trim() || null,
           };
 
           await projectsApi.create(createData);
@@ -167,6 +179,8 @@ export const ProjectFormDialog = NiceModal.create<ProjectFormDialogProps>(
         setSetupScript('');
         setDevScript('');
         setCopyFiles('');
+        setWorkspaceDirs('');
+        setAppendPrompt('');
       }
       setParentPath('');
       setFolderName('');
@@ -205,29 +219,33 @@ export const ProjectFormDialog = NiceModal.create<ProjectFormDialogProps>(
                 </TabsList>
                 <TabsContent value="general" className="space-y-4">
                   <form onSubmit={handleSubmit} className="space-y-4">
-                    <ProjectFormFields
-                      isEditing={isEditing}
-                      repoMode={repoMode}
-                      setRepoMode={setRepoMode}
-                      gitRepoPath={gitRepoPath}
-                      handleGitRepoPathChange={handleGitRepoPathChange}
-                      parentPath={parentPath}
-                      setParentPath={setParentPath}
-                      setFolderName={setFolderName}
-                      setName={setName}
-                      name={name}
-                      setupScript={setupScript}
-                      setSetupScript={setSetupScript}
-                      devScript={devScript}
-                      setDevScript={setDevScript}
-                      cleanupScript={cleanupScript}
-                      setCleanupScript={setCleanupScript}
-                      copyFiles={copyFiles}
-                      setCopyFiles={setCopyFiles}
-                      error={error}
-                      setError={setError}
-                      projectId={project ? project.id : undefined}
-                    />
+                <ProjectFormFields
+                  isEditing={isEditing}
+                  repoMode={repoMode}
+                  setRepoMode={setRepoMode}
+                  gitRepoPath={gitRepoPath}
+                  handleGitRepoPathChange={handleGitRepoPathChange}
+                  parentPath={parentPath}
+                  setParentPath={setParentPath}
+                  setFolderName={setFolderName}
+                  setName={setName}
+                  name={name}
+                  setupScript={setupScript}
+                  setSetupScript={setSetupScript}
+                  devScript={devScript}
+                  setDevScript={setDevScript}
+                  cleanupScript={cleanupScript}
+                  setCleanupScript={setCleanupScript}
+                  copyFiles={copyFiles}
+                  setCopyFiles={setCopyFiles}
+                  error={error}
+                  setError={setError}
+                  projectId={project ? project.id : undefined}
+                  workspaceDirs={workspaceDirs}
+                  setWorkspaceDirs={setWorkspaceDirs}
+                  appendPrompt={appendPrompt}
+                  setAppendPrompt={setAppendPrompt}
+                />
                     <DialogFooter>
                       <Button
                         type="submit"
@@ -269,6 +287,10 @@ export const ProjectFormDialog = NiceModal.create<ProjectFormDialogProps>(
                   setError={setError}
                   projectId={undefined}
                   onCreateProject={handleDirectCreate}
+                  workspaceDirs={workspaceDirs}
+                  setWorkspaceDirs={setWorkspaceDirs}
+                  appendPrompt={appendPrompt}
+                  setAppendPrompt={setAppendPrompt}
                 />
                 {repoMode === 'new' && (
                   <DialogFooter>
