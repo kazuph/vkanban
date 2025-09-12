@@ -14,6 +14,7 @@ use db::models::{
     task::{CreateTask, Task, TaskWithAttemptStatus, UpdateTask},
     task_attempt::{CreateTaskAttempt, TaskAttempt},
 };
+use db::models::merge::MergeStatus;
 use deployment::Deployment;
 use futures_util::TryStreamExt;
 use serde::{Deserialize, Serialize};
@@ -49,6 +50,8 @@ pub struct TaskPrStatus {
     pub task_id: Uuid,
     pub has_open_pr: bool,
     pub open_pr_url: Option<String>,
+    pub latest_pr_status: Option<MergeStatus>,
+    pub latest_pr_url: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -81,7 +84,24 @@ pub async fn get_tasks_pr_status(
                 AND m.pr_status = 'open'
               ORDER BY m.created_at DESC
               LIMIT 1
-            ) as "open_pr_url: String"
+            ) as "open_pr_url: String",
+            -- Latest PR regardless of status
+            (SELECT m.pr_status
+               FROM task_attempts ta
+               JOIN merges m ON m.task_attempt_id = ta.id
+              WHERE ta.task_id = t.id
+                AND m.merge_type = 'pr'
+              ORDER BY m.created_at DESC
+              LIMIT 1
+            ) as "latest_pr_status?: MergeStatus",
+            (SELECT m.pr_url
+               FROM task_attempts ta
+               JOIN merges m ON m.task_attempt_id = ta.id
+              WHERE ta.task_id = t.id
+                AND m.merge_type = 'pr'
+              ORDER BY m.created_at DESC
+              LIMIT 1
+            ) as "latest_pr_url: String"
           FROM tasks t
          WHERE t.project_id = $1"#,
         query.project_id
@@ -95,6 +115,8 @@ pub async fn get_tasks_pr_status(
             task_id: r.task_id,
             has_open_pr: r.has_open_pr != 0,
             open_pr_url: r.open_pr_url,
+            latest_pr_status: r.latest_pr_status,
+            latest_pr_url: r.latest_pr_url,
         })
         .collect::<Vec<_>>();
 

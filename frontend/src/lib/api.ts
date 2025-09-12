@@ -47,6 +47,8 @@ export type TaskPrStatus = {
   task_id: string;
   has_open_pr: boolean;
   open_pr_url: string | null;
+  latest_pr_status?: 'open' | 'merged' | 'closed' | 'unknown' | null;
+  latest_pr_url?: string | null;
 };
 
 export class ApiError<E = unknown> extends Error {
