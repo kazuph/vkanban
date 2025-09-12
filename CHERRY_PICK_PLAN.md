@@ -15,7 +15,7 @@ Working branch: audit/upstream-2025-09-12
 |  8 | `913c77d8` | 2025-09-09 | chore: bump version to 0.0.81 | ☐ |  |
 |  9 | `4a1888e3` | 2025-09-09 | fix repo card horizonal overflow (#649) | ☐ |  |
 | 10 | `70497c4c` | 2025-09-09 | improve Release notes dialog styling (#661) | ☐ |  |
-| 11 | `17f8f2be` | 2025-09-09 | Prevent opening browser attempt form blocking the server (#667) | ☐ |  |
+| 11 | `17f8f2be` | 2025-09-09 | Prevent opening browser attempt form blocking the server (#667) | ✅ |  |
 | 12 | `cec320cf` | 2025-09-09 | Fix frontend variant cycle (vibe-kanban) (#668) | ☐ |  |
 | 13 | `465f14ce` | 2025-09-09 | Switch for diff split vs inline view (#653) | ☐ |  |
 | 14 | `05e68dad` | 2025-09-09 | normalize save button on settings pages, remove unnecessary scroll on settings page, fix separator color in navbar dropdown menu (#662) | ☐ |  |
