@@ -26,7 +26,7 @@ Working branch: audit/upstream-2025-09-12
 | 19 | `75b5595a` | 2025-09-09 | Add spinoff button (vibe-kanban) (#639) | ☐ |  |
 | 20 | `d87f6d71` | 2025-09-09 | Visualize task relationships (vibe-kanban) (#665) | ☐ |  |
 | 21 | `2c8eb0ca` | 2025-09-10 | fix: close GitHub dialog box (vibe-kanban) (#663) | ✅ |  |
-| 22 | `c79f0a20` | 2025-09-10 | Add diff spinner timeout (#660) | ☐ |  |
+| 22 | `c79f0a20` | 2025-09-10 | Add diff spinner timeout (#660) | ✅ |  |
 | 23 | `4c5be4e8` | 2025-09-10 | feat: one click installation for popular MCP servers (#657) | ☐ |  |
 | 24 | `89beac2d` | 2025-09-10 | Collect richer logs from opencode (#655) | ☐ |  |
 | 25 | `93994eef` | 2025-09-10 | remove duplicate code in the comprehensive variant of the worktree cleanup implementation (#672) | ✅ |  |
