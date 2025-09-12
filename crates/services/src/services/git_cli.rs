@@ -397,7 +397,10 @@ impl GitCli {
         message: &str,
     ) -> Result<String, GitCliError> {
         self.git(repo_path, ["checkout", base_branch]).map(|_| ())?;
-        self.git(repo_path, ["merge", "--squash", "--no-commit", from_branch])
+        // Force fast-forward behavior when squashing to avoid conflicts with
+        // user configs like `merge.ff=false` (which implies `--no-ff` and
+        // is incompatible with `--squash`).
+        self.git(repo_path, ["merge", "--squash", "--no-commit", "--ff", from_branch])
             .map(|_| ())?;
         self.git(repo_path, ["commit", "-m", message]).map(|_| ())?;
         let sha = self
