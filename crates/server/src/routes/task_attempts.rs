@@ -409,7 +409,10 @@ pub async fn follow_up(
         .await?
         .ok_or(SqlxError::RowNotFound)?;
 
-    let mut prompt = payload.prompt;
+    // Clone to keep the original user input accessible later (e.g.,
+    // when composing compact fallback prompts) while we mutate `prompt`
+    // with image path canonicalization and project-level append rules.
+    let mut prompt = payload.prompt.clone();
     if let Some(image_ids) = &payload.image_ids {
         TaskImage::associate_many(&deployment.db().pool, task.id, image_ids).await?;
 
@@ -467,6 +470,63 @@ pub async fn follow_up(
                 prepared_prompt = format!("{header}{ctx}{sep}{prepared_prompt}");
             }
         }
+    }
+
+    // Fallback for Codex: if the previous coding agent process failed with exit code 1
+    // (commonly due to oversized context), start a fresh session with a compact prompt.
+    // Keep only: the new instruction, task title/description, and a note to use git logs/diff.
+    if !force_new_session
+        && matches!(
+            executor_profile_id.executor,
+            executors::executors::BaseCodingAgent::Codex
+        )
+        && matches!(
+            initial_executor_profile_id.executor,
+            executors::executors::BaseCodingAgent::Codex
+        )
+        && latest_execution_process.status
+            == db::models::execution_process::ExecutionProcessStatus::Failed
+        && latest_execution_process.exit_code == Some(1)
+    {
+        // Compose a compact fallback prompt
+        let mut fallback = String::new();
+        // Use the original (unmutated) user prompt for the compact fallback
+        // to avoid pulling in project-level appended text or path rewrites.
+        let user_msg = payload.prompt.trim();
+        if !user_msg.is_empty() {
+            fallback.push_str(user_msg);
+            fallback.push_str("\n\n");
+        }
+        // Task context kept minimal
+        fallback.push_str("[Task]\n");
+        fallback.push_str(&format!("Title: {}\n", task.title.trim()));
+        if let Some(desc) = &task.description {
+            if !desc.trim().is_empty() {
+                fallback.push_str("Description: ");
+                fallback.push_str(desc.trim());
+                fallback.push('\n');
+            }
+        }
+        // Guidance to use git history/diff for further context
+        let branch_info = task_attempt
+            .branch
+            .as_ref()
+            .map(|b| format!(" (branch: {b})"))
+            .unwrap_or_default();
+        fallback.push_str("\n[Guidance]\n");
+        fallback.push_str(
+            &format!(
+                "Prior run likely failed due to an oversized context. Do not attempt to load full prior conversation/state. Use repository signals instead{branch_info}:\n- Inspect recent commits (e.g., `git log --oneline -n 20`).\n- Use `git status` and `git diff` to understand current changes.\n- Then continue with the new instruction above.\n"
+            ),
+        );
+
+        prepared_prompt = fallback;
+        force_new_session = true; // Avoid resuming large sessions
+
+        tracing::warn!(
+            "Applying Codex fallback for attempt {}: previous process failed with exit code 1; starting fresh session with compact prompt",
+            task_attempt.id
+        );
     }
 
     let follow_up_request = CodingAgentFollowUpRequest {
