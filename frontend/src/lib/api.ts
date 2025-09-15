@@ -49,6 +49,8 @@ export type TaskPrStatus = {
   open_pr_url: string | null;
   latest_pr_status?: 'open' | 'merged' | 'closed' | 'unknown' | null;
   latest_pr_url?: string | null;
+  // Added server field: latest attempt branch (if any)
+  branch?: string | null;
 };
 
 export class ApiError<E = unknown> extends Error {

@@ -1,4 +1,4 @@
-import { KeyboardEvent, useCallback, useEffect, useRef, useState } from 'react';
+import { KeyboardEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -116,6 +116,24 @@ export function TaskCard({
     onViewDetails(task);
   }, [task, onViewDetails]);
 
+  // Derive GitHub repo base URL from any known PR URL
+  const repoUrlBase = useMemo(() => {
+    const url = prStatus?.open_pr_url || prStatus?.latest_pr_url || null;
+    if (!url) return undefined;
+    try {
+      const u = new URL(url);
+      const parts = u.pathname.split('/').filter(Boolean);
+      if (parts.length >= 2) return `${u.origin}/${parts[0]}/${parts[1]}`;
+    } catch {}
+    return undefined;
+  }, [prStatus?.open_pr_url, prStatus?.latest_pr_url]);
+
+  const encodeBranchForPath = (name: string) =>
+    name
+      .split('/')
+      .map((seg) => encodeURIComponent(seg))
+      .join('/');
+
   return (
     <KanbanCard
       key={task.id}
@@ -210,11 +228,40 @@ export function TaskCard({
         </p>
       )}
 
-      {/* Bottom footer: PR status (left) + last updated (right) */}
+      {/* Bottom footer: Branch (left) + PR status (left) + last updated (right) */}
       {(() => {
         const pillBase =
           'inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-mono lowercase tracking-tight border';
         let prNode: React.ReactNode = null;
+        let branchNode: React.ReactNode = null;
+
+        const branchName = prStatus?.branch || null;
+        if (branchName) {
+          const cls = `${pillBase} bg-muted text-foreground border-[hsl(var(--border))] hover:bg-muted/80`;
+          const content = (
+            <span className="truncate max-w-[12rem]" title={branchName}>
+              {branchName}
+            </span>
+          );
+          if (repoUrlBase) {
+            branchNode = (
+              <button
+                className={cls}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  const href = `${repoUrlBase}/tree/${encodeBranchForPath(branchName)}`;
+                  window.open(href, '_blank');
+                }}
+                aria-label={`Open branch ${branchName} on GitHub`}
+                title={`Open ${branchName} on GitHub`}
+              >
+                {content}
+              </button>
+            );
+          } else {
+            branchNode = <span className={cls}>{content}</span>;
+          }
+        }
 
         if (prStatus) {
           // open > merged > closed; else hide (no badge)
@@ -275,7 +322,10 @@ export function TaskCard({
 
         return (
           <div className="mt-2 flex items-center justify-between">
-            <div>{prNode}</div>
+            <div className="flex items-center gap-2 min-w-0">
+              {branchNode}
+              {prNode}
+            </div>
             <div
               className="ml-2 text-[11px] text-muted-foreground whitespace-nowrap"
               title={tooltip}

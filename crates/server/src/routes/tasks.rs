@@ -52,6 +52,8 @@ pub struct TaskPrStatus {
     pub open_pr_url: Option<String>,
     pub latest_pr_status: Option<MergeStatus>,
     pub latest_pr_url: Option<String>,
+    /// Latest attempt branch name for this task (if any)
+    pub branch: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -64,9 +66,10 @@ pub async fn get_tasks_pr_status(
     State(deployment): State<DeploymentImpl>,
     Query(query): Query<TaskPrStatusQuery>,
 ) -> Result<ResponseJson<ApiResponse<Vec<TaskPrStatus>>>, ApiError> {
-    let records = sqlx::query!(
+    use sqlx::Row;
+    let rows = sqlx::query(
         r#"SELECT
-            t.id AS "task_id!: Uuid",
+            t.id AS task_id,
             CASE WHEN EXISTS (
                 SELECT 1
                   FROM task_attempts ta
@@ -75,7 +78,7 @@ pub async fn get_tasks_pr_status(
                    AND m.merge_type = 'pr'
                    AND m.pr_status = 'open'
                  LIMIT 1
-            ) THEN 1 ELSE 0 END AS "has_open_pr!: i64",
+            ) THEN 1 ELSE 0 END AS has_open_pr,
             (SELECT m.pr_url
                FROM task_attempts ta
                JOIN merges m ON m.task_attempt_id = ta.id
@@ -84,7 +87,7 @@ pub async fn get_tasks_pr_status(
                 AND m.pr_status = 'open'
               ORDER BY m.created_at DESC
               LIMIT 1
-            ) as "open_pr_url: String",
+            ) as open_pr_url,
             -- Latest PR regardless of status
             (SELECT m.pr_status
                FROM task_attempts ta
@@ -93,7 +96,7 @@ pub async fn get_tasks_pr_status(
                 AND m.merge_type = 'pr'
               ORDER BY m.created_at DESC
               LIMIT 1
-            ) as "latest_pr_status?: MergeStatus",
+            ) as latest_pr_status,
             (SELECT m.pr_url
                FROM task_attempts ta
                JOIN merges m ON m.task_attempt_id = ta.id
@@ -101,24 +104,48 @@ pub async fn get_tasks_pr_status(
                 AND m.merge_type = 'pr'
               ORDER BY m.created_at DESC
               LIMIT 1
-            ) as "latest_pr_url: String"
+            ) as latest_pr_url,
+            -- Latest attempt branch name (if any)
+            (
+              SELECT ta.branch
+                FROM task_attempts ta
+               WHERE ta.task_id = t.id
+               ORDER BY ta.created_at DESC
+               LIMIT 1
+            ) as latest_branch_name
           FROM tasks t
-         WHERE t.project_id = $1"#,
-        query.project_id
+         WHERE t.project_id = ?"#,
     )
+    .bind(query.project_id)
     .fetch_all(&deployment.db().pool)
     .await?;
 
-    let data = records
-        .into_iter()
-        .map(|r| TaskPrStatus {
-            task_id: r.task_id,
-            has_open_pr: r.has_open_pr != 0,
-            open_pr_url: r.open_pr_url,
-            latest_pr_status: r.latest_pr_status,
-            latest_pr_url: r.latest_pr_url,
-        })
-        .collect::<Vec<_>>();
+    let mut data = Vec::with_capacity(rows.len());
+    for row in rows.into_iter() {
+        let task_id: Uuid = row.try_get("task_id").unwrap_or_else(|_| Uuid::nil());
+        let has_open_pr_i64: i64 = row.try_get("has_open_pr").unwrap_or(0);
+        let open_pr_url: Option<String> = row.try_get("open_pr_url").ok();
+        let latest_pr_status_str: Option<String> = row.try_get("latest_pr_status").ok();
+        let latest_pr_url: Option<String> = row.try_get("latest_pr_url").ok();
+        let latest_branch_name: Option<String> = row.try_get("latest_branch_name").ok();
+
+        // Convert string to MergeStatus (snake_case in DB)
+        let latest_pr_status = latest_pr_status_str.as_deref().map(|s| match s {
+            "open" => MergeStatus::Open,
+            "merged" => MergeStatus::Merged,
+            "closed" => MergeStatus::Closed,
+            _ => MergeStatus::Unknown,
+        });
+
+        data.push(TaskPrStatus {
+            task_id,
+            has_open_pr: has_open_pr_i64 != 0,
+            open_pr_url,
+            latest_pr_status,
+            latest_pr_url,
+            branch: latest_branch_name,
+        });
+    }
 
     Ok(ResponseJson(ApiResponse::success(data)))
 }
