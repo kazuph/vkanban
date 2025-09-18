@@ -11,7 +11,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { FileSearchTextarea } from '@/components/ui/file-search-textarea';
 import { useEffect, useMemo, useState, useRef, useCallback } from 'react';
 import { attemptsApi, imagesApi } from '@/lib/api.ts';
-import type { ImageResponse, TaskWithAttemptStatus } from 'shared/types';
+import type { ExecutorProfileId, ImageResponse, TaskWithAttemptStatus } from 'shared/types';
 import { useBranchStatus } from '@/hooks';
 import { useAttemptExecution } from '@/hooks/useAttemptExecution';
 import { Loader } from '@/components/ui/loader';
@@ -29,14 +29,12 @@ interface TaskFollowUpSectionProps {
   task: TaskWithAttemptStatus;
   projectId: string;
   selectedAttemptId?: string;
-  selectedAttemptProfile?: string;
 }
 
 export function TaskFollowUpSection({
   task,
   projectId,
   selectedAttemptId,
-  selectedAttemptProfile,
 }: TaskFollowUpSectionProps) {
   const {
     attemptData,
@@ -48,39 +46,34 @@ export function TaskFollowUpSection({
   const { data: branchStatus } = useBranchStatus(selectedAttemptId);
   const { profiles, system } = useUserSystem();
 
-  // Inline defaultFollowUpVariant logic
-  const defaultFollowUpVariant = useMemo(() => {
-    if (!processes.length) return null;
+  const latestCodingAgentProfile = useMemo(() => {
+    const codingProcesses = processes
+      .filter((p) => p.run_reason === 'codingagent' && !p.dropped)
+      .reverse();
 
-    // Find most recent coding agent process with variant
-    const latestProfile = processes
-      .filter((p) => p.run_reason === 'codingagent')
-      .reverse()
-      .map((process) => {
-        if (
-          process.executor_action?.typ.type === 'CodingAgentInitialRequest' ||
-          process.executor_action?.typ.type === 'CodingAgentFollowUpRequest'
-        ) {
-          return process.executor_action?.typ.executor_profile_id;
-        }
-        return undefined;
-      })
-      .find(Boolean);
-
-    if (latestProfile?.variant) {
-      return latestProfile.variant;
-    } else if (latestProfile) {
-      return null;
-    } else if (selectedAttemptProfile && profiles) {
-      // No processes yet, check if profile has default variant
-      const profile = profiles?.[selectedAttemptProfile];
-      if (profile && Object.keys(profile).length > 0) {
-        return Object.keys(profile)[0];
-      }
+    for (const process of codingProcesses) {
+      const typ: any = process.executor_action?.typ;
+      if (!typ?.executor_profile_id) continue;
+      return typ.executor_profile_id as ExecutorProfileId;
     }
 
     return null;
-  }, [processes, selectedAttemptProfile, profiles]);
+  }, [processes]);
+
+  const derivedBaseExecutor = useMemo(() => {
+    return (
+      latestCodingAgentProfile?.executor ||
+      system.config?.executor_profile?.executor ||
+      null
+    );
+  }, [latestCodingAgentProfile?.executor, system.config?.executor_profile?.executor]);
+
+  const defaultFollowUpVariant = useMemo(() => {
+    if (latestCodingAgentProfile?.variant) {
+      return latestCodingAgentProfile.variant;
+    }
+    return null;
+  }, [latestCodingAgentProfile?.variant]);
 
   const [followUpMessage, setFollowUpMessage] = useState('');
   const [isSendingFollowUp, setIsSendingFollowUp] = useState(false);
@@ -90,8 +83,9 @@ export function TaskFollowUpSection({
   );
   // Base executor selection for per-message switching
   const [selectedBaseExecutor, setSelectedBaseExecutor] = useState<string | null>(
-    selectedAttemptProfile || system.config?.executor_profile?.executor || null
+    derivedBaseExecutor
   );
+  const [baseExecutorManuallySet, setBaseExecutorManuallySet] = useState(false);
   const [isAnimating, setIsAnimating] = useState(false);
   const variantButtonRef = useRef<HTMLButtonElement>(null);
   const [showImageUpload, setShowImageUpload] = useState(false);
@@ -134,6 +128,16 @@ export function TaskFollowUpSection({
     isSendingFollowUp,
     branchStatus?.merges,
   ]);
+  useEffect(() => {
+    setBaseExecutorManuallySet(false);
+  }, [selectedAttemptId]);
+
+  useEffect(() => {
+    if (!baseExecutorManuallySet) {
+      setSelectedBaseExecutor(derivedBaseExecutor);
+    }
+  }, [derivedBaseExecutor, baseExecutorManuallySet]);
+
   const currentProfile = useMemo(() => {
     if (!selectedBaseExecutor || !profiles) return null;
     return profiles?.[selectedBaseExecutor];
@@ -335,6 +339,7 @@ export function TaskFollowUpSection({
                           <DropdownMenuItem
                             key={exec}
                             onClick={() => {
+                              setBaseExecutorManuallySet(true);
                               setSelectedBaseExecutor(exec);
                               // Default variant for new executor
                               const variants = profiles?.[exec] || {};

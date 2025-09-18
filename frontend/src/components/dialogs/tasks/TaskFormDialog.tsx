@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Globe2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ImageUploadSection } from '@/components/ui/ImageUploadSection';
@@ -20,8 +20,16 @@ import {
 } from '@/components/ui/select';
 import { templatesApi, imagesApi } from '@/lib/api';
 import { useTaskMutations } from '@/hooks/useTaskMutations';
-import type { TaskStatus, TaskTemplate, ImageResponse } from 'shared/types';
+import type {
+  TaskStatus,
+  TaskTemplate,
+  ImageResponse,
+  BaseCodingAgent,
+  ExecutorProfileId,
+} from 'shared/types';
 import NiceModal, { useModal } from '@ebay/nice-modal-react';
+import { useUserSystem } from '@/components/config-provider';
+import { formatAgentSummary, formatExecutorName } from '@/lib/agent-display';
 
 interface Task {
   id: string;
@@ -65,6 +73,99 @@ export const TaskFormDialog = NiceModal.create<TaskFormDialogProps>(
     const [newlyUploadedImageIds, setNewlyUploadedImageIds] = useState<
       string[]
     >([]);
+
+    const {
+      config: userConfig,
+      profiles: executorProfiles,
+      updateAndSaveConfig,
+      loading: systemLoading,
+    } = useUserSystem();
+    const [defaultExecutorProfile, setDefaultExecutorProfile] =
+      useState<ExecutorProfileId | null>(userConfig?.executor_profile ?? null);
+    const [savingDefaultAgent, setSavingDefaultAgent] = useState(false);
+    const [agentSaveState, setAgentSaveState] = useState<
+      'success' | 'error' | null
+    >(null);
+
+    useEffect(() => {
+      setDefaultExecutorProfile(userConfig?.executor_profile ?? null);
+      setAgentSaveState(null);
+    }, [userConfig?.executor_profile]);
+
+    const executorOptions = useMemo(
+      () => (executorProfiles ? Object.keys(executorProfiles).sort() : []),
+      [executorProfiles]
+    );
+
+    const variantOptions = useMemo(() => {
+      if (!defaultExecutorProfile?.executor || !executorProfiles) return [];
+      const variants = executorProfiles[defaultExecutorProfile.executor] || {};
+      return Object.keys(variants as Record<string, unknown>);
+    }, [defaultExecutorProfile?.executor, executorProfiles]);
+
+    const defaultAgentSummary = useMemo(() => {
+      if (!defaultExecutorProfile?.executor) {
+        return 'Not configured';
+      }
+      return (
+        formatAgentSummary({
+          executor: defaultExecutorProfile.executor,
+          variant: defaultExecutorProfile.variant,
+        }) ?? formatExecutorName(defaultExecutorProfile.executor)
+      );
+    }, [defaultExecutorProfile]);
+
+    const VARIANT_NONE_VALUE = '__none__';
+
+    const agentConfigDirty = useMemo(() => {
+      const current = userConfig?.executor_profile || null;
+      if (!defaultExecutorProfile && !current) {
+        return false;
+      }
+      if (!defaultExecutorProfile || !current) {
+        return true;
+      }
+      return (
+        defaultExecutorProfile.executor !== current.executor ||
+        (defaultExecutorProfile.variant ?? null) !== (current.variant ?? null)
+      );
+    }, [defaultExecutorProfile, userConfig?.executor_profile]);
+
+    const handleDefaultExecutorChange = useCallback((executor: string) => {
+      setDefaultExecutorProfile({
+        executor: executor as BaseCodingAgent,
+        variant: null,
+      });
+      setAgentSaveState(null);
+    }, []);
+
+    const handleDefaultVariantChange = useCallback((value: string) => {
+      const nextVariant = value === VARIANT_NONE_VALUE ? null : value;
+      setDefaultExecutorProfile((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          variant: nextVariant,
+        };
+      });
+      setAgentSaveState(null);
+    }, []);
+
+    const handleSaveDefaultExecutor = useCallback(async () => {
+      if (!defaultExecutorProfile) return;
+      setSavingDefaultAgent(true);
+      try {
+        const ok = await updateAndSaveConfig({
+          executor_profile: defaultExecutorProfile,
+        });
+        setAgentSaveState(ok ? 'success' : 'error');
+      } catch (error) {
+        console.error('Failed to update default executor profile:', error);
+        setAgentSaveState('error');
+      } finally {
+        setSavingDefaultAgent(false);
+      }
+    }, [defaultExecutorProfile, updateAndSaveConfig]);
 
     const isEditMode = Boolean(task);
 
@@ -428,6 +529,117 @@ export const TaskFormDialog = NiceModal.create<TaskFormDialogProps>(
                   projectId={projectId}
                 />
               </div>
+
+              {!isEditMode && (
+                <div className="rounded-md border border-dashed border-muted-foreground/30 bg-muted/10 p-3 space-y-3">
+                  <div className="flex flex-col gap-1">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-medium">Default Agent</p>
+                        <p className="text-xs text-muted-foreground">
+                          New attempts created from this task will start with this agent unless you change it later.
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {agentSaveState === 'success' && (
+                          <span className="text-xs text-green-600">Saved</span>
+                        )}
+                        {agentSaveState === 'error' && (
+                          <span className="text-xs text-destructive">Save failed</span>
+                        )}
+                        <Button
+                          size="xs"
+                          variant="outline"
+                          onClick={handleSaveDefaultExecutor}
+                          disabled={
+                            !agentConfigDirty ||
+                            savingDefaultAgent ||
+                            !defaultExecutorProfile?.executor
+                          }
+                        >
+                          {savingDefaultAgent ? 'Saving…' : 'Save'}
+                        </Button>
+                      </div>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Current: {defaultAgentSummary}
+                    </p>
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="space-y-1">
+                      <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                        Agent
+                      </span>
+                      <Select
+                        value={defaultExecutorProfile?.executor ?? undefined}
+                        onValueChange={handleDefaultExecutorChange}
+                        disabled={
+                          systemLoading || executorOptions.length === 0
+                        }
+                      >
+                        <SelectTrigger>
+                          <SelectValue
+                            placeholder={
+                              systemLoading
+                                ? 'Loading…'
+                                : executorOptions.length === 0
+                                  ? 'No agents configured'
+                                  : 'Select agent'
+                            }
+                          />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {executorOptions.map((exec) => (
+                            <SelectItem key={exec} value={exec}>
+                              {formatExecutorName(exec)}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="space-y-1">
+                      <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                        Variant
+                      </span>
+                      {defaultExecutorProfile?.executor && variantOptions.length > 0 ? (
+                        <Select
+                          value={
+                            defaultExecutorProfile.variant ?? VARIANT_NONE_VALUE
+                          }
+                          onValueChange={handleDefaultVariantChange}
+                          disabled={savingDefaultAgent}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Default" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value={VARIANT_NONE_VALUE}>
+                              Default
+                            </SelectItem>
+                            {variantOptions.map((variant) => (
+                              <SelectItem key={variant} value={variant}>
+                                {variant}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      ) : (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled
+                          className="justify-start text-xs text-muted-foreground"
+                        >
+                          {defaultExecutorProfile?.executor
+                            ? 'No variants'
+                            : 'Select an agent first'}
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
 
               <ImageUploadSection
                 images={images}

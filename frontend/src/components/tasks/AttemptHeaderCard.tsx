@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { Card } from '../ui/card';
 import { Button } from '../ui/button';
 import {
@@ -13,6 +14,7 @@ import { useAttemptExecution } from '@/hooks/useAttemptExecution';
 import { attemptsApi } from '@/lib/api';
 import { useQueryClient } from '@tanstack/react-query';
 import { showModal } from '@/lib/modals';
+import { formatAgentSummary } from '@/lib/agent-display';
 
 interface AttemptHeaderCardProps {
   attemptNumber: number;
@@ -44,35 +46,28 @@ export function AttemptHeaderCard({
   const { attemptData } = useAttemptExecution(selectedAttempt?.id ?? undefined);
   const queryClient = useQueryClient();
 
-  const agentLabel = (() => {
-    const fallback = selectedAttempt?.executor || '';
-    const procs = attemptData.processes || [];
-    // Find latest coding-agent process
-    const cg = [...procs]
-      .reverse()
-      .find((p) => p.run_reason === 'codingagent' && !p.dropped);
-    if (!cg) return fallback;
-    const t: any = cg.executor_action?.typ || {};
-    const exec: string = t?.executor_profile_id?.executor || fallback;
-    let setting: string | null = null;
-    if (exec === 'CODEX') {
-      const m = (t.codex_model_override || '') as string;
-      setting = m
-        ? m === 'gpt-5'
-          ? 'high'
-          : m === 'codex-mini-latest'
-            ? 'medium'
-            : m === 'o4-mini'
-              ? 'low'
-              : m
-        : 'default';
-    } else if (exec === 'CLAUDE_CODE') {
-      const m = (t.claude_model_override || '') as string;
-      setting = m ? m : 'default';
+  const latestAgentSummary = useMemo(() => {
+    const processes = attemptData.processes || [];
+    const codingProcesses = processes
+      .filter((p) => p.run_reason === 'codingagent' && !p.dropped)
+      .reverse();
+
+    for (const process of codingProcesses) {
+      const typ: any = process.executor_action?.typ;
+      if (!typ?.executor_profile_id) continue;
+      const summary = formatAgentSummary({
+        executor: typ.executor_profile_id.executor,
+        variant: typ.executor_profile_id.variant,
+        codexModelOverride: typ.codex_model_override,
+        claudeModelOverride: typ.claude_model_override,
+      });
+      if (summary) {
+        return summary;
+      }
     }
-    const execName = exec === 'CLAUDE_CODE' ? 'Claude Code' : exec;
-    return setting ? `${execName}(${setting})` : execName;
-  })();
+
+    return null;
+  }, [attemptData.processes]);
 
   const handleDeleteAttempt = async () => {
     if (!selectedAttempt?.id || !task) return;
@@ -135,9 +130,7 @@ export function AttemptHeaderCard({
                     {new Date(attempt.created_at).toLocaleDateString()}{' '}
                     {new Date(attempt.created_at).toLocaleTimeString()}
                   </span>
-                  <span className="text-xs text-muted-foreground">
-                    {attempt.executor || 'Base Agent'}
-                  </span>
+                  {/* Agent information varies by process; omit to avoid implying attempt-level bindings */}
                 </div>
               </DropdownMenuItem>
             ))}
@@ -150,9 +143,11 @@ export function AttemptHeaderCard({
             <span className="text-secondary-foreground">Attempt &middot; </span>
             {attemptNumber}/{totalAttempts}
           </p>
-          <p>
-            <span className="text-secondary-foreground">Agent &middot; </span>
-            {agentLabel}
+          <p title="Derived from the most recent coding agent process in this attempt">
+            <span className="text-secondary-foreground">
+              Latest Agent &middot;{' '}
+            </span>
+            {latestAgentSummary ?? 'Not yet run'}
           </p>
           {selectedAttempt?.branch && (
             <p className="max-w-30">

@@ -52,6 +52,7 @@ import { showModal } from '@/lib/modals';
 import { openTaskForm } from '@/lib/openTaskForm';
 import { attemptsApi } from '@/lib/api';
 import { useQueryClient } from '@tanstack/react-query';
+import { formatAgentSummary } from '@/lib/agent-display';
 
 // Helper function to get the display name for different editor types
 function getEditorDisplayName(editorType: string): string {
@@ -109,7 +110,12 @@ function CurrentAttempt({
 }: Props) {
   const { config } = useUserSystem();
   const queryClient = useQueryClient();
-  const { isAttemptRunning, stopExecution, isStopping } = useAttemptExecution(
+  const {
+    attemptData,
+    isAttemptRunning,
+    stopExecution,
+    isStopping,
+  } = useAttemptExecution(
     selectedAttempt?.id,
     task.id
   );
@@ -186,6 +192,29 @@ function CurrentAttempt({
     },
     [setSelectedAttempt]
   );
+
+  const latestAgentSummary = useMemo(() => {
+    const processes = attemptData?.processes || [];
+    const codingProcesses = processes
+      .filter((p) => p.run_reason === 'codingagent' && !p.dropped)
+      .reverse();
+
+    for (const process of codingProcesses) {
+      const typ: any = process.executor_action?.typ;
+      if (!typ?.executor_profile_id) continue;
+      const summary = formatAgentSummary({
+        executor: typ.executor_profile_id.executor,
+        variant: typ.executor_profile_id.variant,
+        codexModelOverride: typ.codex_model_override,
+        claudeModelOverride: typ.claude_model_override,
+      });
+      if (summary) {
+        return summary;
+      }
+    }
+
+    return null;
+  }, [attemptData?.processes]);
 
   const handleMergeClick = async () => {
     if (!projectId || !selectedAttempt?.id || !selectedAttempt?.task_id) return;
@@ -496,9 +525,14 @@ function CurrentAttempt({
         )}
         <div className="min-w-0">
           <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">
-            Agent
+            Latest Agent
           </div>
-          <div className="text-sm font-medium">{selectedAttempt.executor}</div>
+          <div
+            className="text-sm font-medium"
+            title="Derived from the most recent coding agent process in this attempt"
+          >
+            {latestAgentSummary ?? 'Not yet run'}
+          </div>
         </div>
 
         <div className="min-w-0">

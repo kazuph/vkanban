@@ -186,7 +186,6 @@ export function TaskDetailsPanel({
                         task={task}
                         projectId={projectId}
                         selectedAttemptId={selectedAttempt?.id}
-                        selectedAttemptProfile={selectedAttempt?.executor}
                       />
                     </main>
                   </div>
@@ -229,7 +228,6 @@ export function TaskDetailsPanel({
                           task={task}
                           projectId={projectId}
                           selectedAttemptId={selectedAttempt?.id}
-                          selectedAttemptProfile={selectedAttempt?.executor}
                         />
                       </>
                     )}

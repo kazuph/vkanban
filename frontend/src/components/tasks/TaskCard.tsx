@@ -231,7 +231,7 @@ export function TaskCard({
       {/* Bottom footer: Branch (left) + PR status (left) + last updated (right) */}
       {(() => {
         const pillBase =
-          'inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-mono lowercase tracking-tight border';
+          'inline-flex max-w-full min-w-0 items-center px-2.5 py-0.5 rounded-full text-[11px] font-mono lowercase tracking-tight border';
         let prNode: React.ReactNode = null;
         let branchNode: React.ReactNode = null;
 
@@ -320,14 +320,18 @@ export function TaskCard({
         const updatedText = formatTimeAgo(updated);
         const tooltip = formatTooltip(updated);
 
+        const hasFooterPills = branchNode || prNode;
+
         return (
-          <div className="mt-2 flex items-center justify-between">
-            <div className="flex items-center gap-2 min-w-0">
-              {branchNode}
-              {prNode}
-            </div>
+          <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1">
+            {hasFooterPills && (
+              <div className="flex flex-wrap items-center gap-2 min-w-0 flex-1">
+                {branchNode}
+                {prNode}
+              </div>
+            )}
             <div
-              className="ml-2 text-[11px] text-muted-foreground whitespace-nowrap"
+              className="ml-auto text-[11px] text-muted-foreground"
               title={tooltip}
             >
               {updatedText}
