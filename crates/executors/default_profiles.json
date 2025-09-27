@@ -36,13 +36,7 @@
     "CODEX": {
       "DEFAULT": {
         "CODEX": {
-          "sandbox": "auto"
-        }
-      },
-      "HIGH": {
-        "CODEX": {
-          "sandbox": "auto",
-          "model_reasoning_effort": "high"
+          "sandbox": "danger-full-access"
         }
       }
     },

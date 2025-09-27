@@ -2,6 +2,8 @@
 
 このリポジトリの運用ノウハウ（簡潔版）。
 
+- すべてのオペレーション判断は「英語で考え、日本語で回答」すること。内部での思考・メモ・コメントは英語ベース、ユーザー向け出力は自然な日本語で整える。
+
 ## Git/PR Workflow (Default)
 - Commit in small, implementation-scoped chunks, split by intent, and push after each cohesive change.
 - If no PR exists, create one with the gh CLI; if a PR already exists, open it with `gh pr view --web`. Use Japanese for the PR title and description.

@@ -42,8 +42,7 @@ Example (abridged):
       "FLASH":   { "GEMINI": { "model": "flash",   "yolo": true } }
     },
     "CODEX": {
-      "DEFAULT": { "CODEX": { "sandbox": "danger-full-access" } },
-      "HIGH":    { "CODEX": { "sandbox": "danger-full-access", "model_reasoning_effort": "high" } }
+      "DEFAULT": { "CODEX": { "sandbox": "danger-full-access" } }
     }
   }
 }
@@ -54,6 +53,8 @@ Notes:
 - Variant names are case‑insensitive and normalized to SCREAMING_SNAKE_CASE.
 - `DEFAULT` is reserved and always present; you can add more variants (e.g., `PLAN`, `FLASH`).
 - You can't remove built‑in executors or their built‑in variants, but you can override their values or add new variants.
+- Codex reasoning effort (Default/Low/Medium/High/Custom) is picked per run in the UI, so add variants only if you need different sandbox or other defaults.
+- Codex runs with `--dangerously-bypass-approvals-and-sandbox` by default; override the base command if you need a different sandbox approval flow.
 
 ## Per‑Agent Options (quick reference)
 
