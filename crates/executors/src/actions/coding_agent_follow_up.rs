@@ -7,7 +7,7 @@ use ts_rs::TS;
 
 use crate::{
     actions::Executable,
-    executors::{ExecutorError, StandardCodingAgentExecutor},
+    executors::{ExecutorError, StandardCodingAgentExecutor, codex::ReasoningEffort},
     profile::{ExecutorConfigs, ExecutorProfileId},
 };
 
@@ -22,6 +22,9 @@ pub struct CodingAgentFollowUpRequest {
     /// Optional override for Codex model (maps to --model)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub codex_model_override: Option<String>,
+    /// Optional override for Codex reasoning effort (maps to --config model_reasoning_effort)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub codex_model_reasoning_effort: Option<ReasoningEffort>,
     /// Optional override for Claude model ("sonnet" | "opus")
     #[serde(skip_serializing_if = "Option::is_none")]
     pub claude_model_override: Option<String>,
@@ -52,6 +55,9 @@ impl Executable for CodingAgentFollowUpRequest {
             crate::executors::CodingAgent::Codex(mut cfg) => {
                 if let Some(model) = self.codex_model_override.clone() {
                     cfg.model = Some(model);
+                }
+                if let Some(effort) = self.codex_model_reasoning_effort.clone() {
+                    cfg.model_reasoning_effort = Some(effort);
                 }
                 if force_new {
                     cfg.spawn(current_dir, &self.prompt).await

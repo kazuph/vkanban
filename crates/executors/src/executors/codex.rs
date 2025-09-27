@@ -251,8 +251,11 @@ pub struct Codex {
 
 impl Codex {
     fn build_command_builder(&self) -> CommandBuilder {
-        let mut builder = CommandBuilder::new("npx -y @openai/codex@0.29.0 exec")
-            .params(["--json", "--skip-git-repo-check"]);
+        let mut builder = CommandBuilder::new("npx -y @openai/codex@0.29.0 exec").params([
+            "--json",
+            "--skip-git-repo-check",
+            "--dangerously-bypass-approvals-and-sandbox",
+        ]);
 
         if let Some(approval) = &self.approval {
             builder = builder.extend_params(["--ask-for-approval", approval.as_ref()]);
@@ -263,9 +266,6 @@ impl Codex {
                 builder = builder.extend_params(["--full-auto"]);
             } else {
                 builder = builder.extend_params(["--sandbox", sandbox.as_ref()]);
-                if sandbox == &SandboxMode::DangerFullAccess && self.approval.is_none() {
-                    builder = builder.extend_params(["--dangerously-bypass-approvals-and-sandbox"]);
-                }
             }
         }
 
