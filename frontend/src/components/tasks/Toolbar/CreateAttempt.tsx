@@ -52,7 +52,7 @@ function CreateAttempt({
   // Codex-only model/effort selector for the first follow-up
   const [codexReasoning, setCodexReasoning] = useState<
     'default' | 'low' | 'medium' | 'high' | 'custom'
-  >('high');
+  >('medium');
   const [codexCustomModel, setCodexCustomModel] = useState('');
   const [reuseBranch, setReuseBranch] = useState(false);
 
@@ -138,17 +138,19 @@ function CreateAttempt({
 
       const prompt = initialPrompt.trim();
       const isCodex = (profile as any).executor === 'CODEX';
-      const codex_model_override = isCodex
-        ? codexReasoning === 'custom'
-          ? codexCustomModel.trim() || null
-          : codexReasoning === 'high'
-            ? 'gpt-5'
-            : codexReasoning === 'medium'
-              ? 'codex-mini-latest'
-              : codexReasoning === 'low'
-                ? 'o4-mini'
-                : null
+      const codex_reasoning_effort: 'low' | 'medium' | 'high' | null = isCodex
+        ? codexReasoning === 'high'
+          ? 'high'
+          : codexReasoning === 'medium'
+            ? 'medium'
+            : codexReasoning === 'low'
+              ? 'low'
+              : null
         : null;
+      const codex_model_override =
+        isCodex && codexReasoning === 'custom'
+          ? codexCustomModel.trim() || null
+          : null;
       const isClaude = (profile as any).executor === 'CLAUDE_CODE';
 
       await createAttempt({
@@ -158,6 +160,7 @@ function CreateAttempt({
           reuseBranch && selectedAttempt?.branch ? (selectedAttempt.id as string) : undefined,
         initialInstructions: prompt || null,
         codexModelOverride: codex_model_override as any,
+        codexModelReasoningEffort: codex_reasoning_effort,
         claudeModelOverride: isClaude
           ? ((claudeModel === 'default' ? null : (claudeModel as string)) as any)
           : null,

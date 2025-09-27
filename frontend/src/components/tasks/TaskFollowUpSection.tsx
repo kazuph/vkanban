@@ -96,7 +96,7 @@ export function TaskFollowUpSection({
   // Codex-only: reasoning/model selector
   const [codexReasoning, setCodexReasoning] = useState<
     'default' | 'low' | 'medium' | 'high' | 'custom'
-  >('high');
+  >('medium');
   const [codexCustomModel, setCodexCustomModel] = useState<string>('');
   const [claudeModel, setClaudeModel] = useState<'default' | 'sonnet' | 'opus'>('default');
 
@@ -201,17 +201,19 @@ export function TaskFollowUpSection({
             ? images.map((img) => img.id)
             : null;
 
-      const codex_model_override =
+      const codex_reasoning_effort: 'low' | 'medium' | 'high' | null =
         selectedBaseExecutor === 'CODEX'
-          ? codexReasoning === 'custom'
-            ? codexCustomModel.trim() || null
-            : codexReasoning === 'high'
-              ? 'gpt-5'
-              : codexReasoning === 'medium'
-                ? 'codex-mini-latest'
-                : codexReasoning === 'low'
-                  ? 'o4-mini'
-                  : null
+          ? codexReasoning === 'high'
+            ? 'high'
+            : codexReasoning === 'medium'
+              ? 'medium'
+              : codexReasoning === 'low'
+                ? 'low'
+                : null
+          : null;
+      const codex_model_override =
+        selectedBaseExecutor === 'CODEX' && codexReasoning === 'custom'
+          ? codexCustomModel.trim() || null
           : null;
       const claude_model_override =
         selectedBaseExecutor === 'CLAUDE_CODE'
@@ -226,6 +228,7 @@ export function TaskFollowUpSection({
           ? ({ executor: selectedBaseExecutor, variant: selectedVariant } as any)
           : undefined,
         codex_model_override: (codex_model_override as string | null),
+        codex_model_reasoning_effort: codex_reasoning_effort,
         claude_model_override: (claude_model_override as string | null),
       });
       setFollowUpMessage('');

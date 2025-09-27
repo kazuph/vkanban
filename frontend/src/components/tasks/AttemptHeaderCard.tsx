@@ -59,6 +59,7 @@ export function AttemptHeaderCard({
         executor: typ.executor_profile_id.executor,
         variant: typ.executor_profile_id.variant,
         codexModelOverride: typ.codex_model_override,
+        codexModelReasoningEffort: typ.codex_model_reasoning_effort,
         claudeModelOverride: typ.claude_model_override,
       });
       if (summary) {

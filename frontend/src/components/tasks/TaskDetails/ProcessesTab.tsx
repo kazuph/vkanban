@@ -14,6 +14,7 @@ import { executionProcessesApi } from '@/lib/api.ts';
 import { useAttemptExecution } from '@/hooks';
 import ProcessLogsViewer from './ProcessLogsViewer';
 import type { ExecutionProcessStatus, ExecutionProcess } from 'shared/types';
+import { formatCodexReasoning, formatExecutorName } from '@/lib/agent-display';
 
 import { useProcessSelection } from '@/contexts/ProcessSelectionContext';
 
@@ -178,23 +179,17 @@ function ProcessesTab({ attemptId }: ProcessesTabProps) {
                           // Derive settings label
                           let setting: string | null = null;
                           if (exec === 'CODEX') {
-                            const m = (t.codex_model_override || '') as string;
-                            // Map well-known models → levels; otherwise show raw
-                            setting = m
-                              ? m === 'gpt-5'
-                                ? 'high'
-                                : m === 'codex-mini-latest'
-                                  ? 'medium'
-                                  : m === 'o4-mini'
-                                    ? 'low'
-                                    : m
-                              : 'default';
+                            setting =
+                              formatCodexReasoning({
+                                modelOverride: t.codex_model_override,
+                                reasoningEffort: t.codex_model_reasoning_effort,
+                              }) ?? 'default';
                           } else if (exec === 'CLAUDE_CODE') {
                             const m = (t.claude_model_override || '') as string;
                             setting = m ? m : 'default';
                           }
 
-                          const execName = exec === 'CLAUDE_CODE' ? 'Claude Code' : exec || 'AGENT';
+                          const execName = formatExecutorName(exec) || 'AGENT';
                           const label = `${execName}(${setting || 'default'})`;
 
                           return (

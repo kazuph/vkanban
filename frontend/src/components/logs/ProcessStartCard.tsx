@@ -9,7 +9,8 @@ import {
 import type { ProcessStartPayload } from '@/types/logs';
 import type { ExecutorAction } from 'shared/types';
 import { PROCESS_RUN_REASONS } from '@/constants/processes';
-import React from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { formatCodexReasoning } from '@/lib/agent-display';
 
 interface ProcessStartCardProps {
   payload: ProcessStartPayload;
@@ -30,6 +31,57 @@ const extractPromptFromAction = (
   return null;
 };
 
+const RELATIVE_TIME_UNITS: Array<{ unit: Intl.RelativeTimeFormatUnit; secs: number }> = [
+  { unit: 'minute', secs: 60 },
+  { unit: 'hour', secs: 3600 },
+  { unit: 'day', secs: 86_400 },
+  { unit: 'week', secs: 604_800 },
+  { unit: 'month', secs: 2_629_800 }, // ~30.44 days
+  { unit: 'year', secs: 31_557_600 }, // ~365.25 days
+];
+
+const getLocale = () => (typeof navigator !== 'undefined' ? navigator.language : 'ja-JP');
+
+const formatRelativeTime = (date: Date, locale: string): string | null => {
+  const now = Date.now();
+  const diffSec = Math.round((now - date.getTime()) / 1000);
+  if (!Number.isFinite(diffSec)) return null;
+  if (diffSec < 45) {
+    return locale.startsWith('ja') ? '今' : 'now';
+  }
+
+  let value = diffSec;
+  let unit: Intl.RelativeTimeFormatUnit = 'minute';
+  for (const candidate of RELATIVE_TIME_UNITS) {
+    if (diffSec < candidate.secs) break;
+    unit = candidate.unit;
+    value = Math.round(diffSec / candidate.secs);
+  }
+
+  const rtf = new Intl.RelativeTimeFormat(locale, { numeric: 'auto' });
+  return rtf.format(-value, unit);
+};
+
+const formatAbsoluteTime = (date: Date, locale: string): string => {
+  try {
+    const formatter = new Intl.DateTimeFormat(locale, {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+    return formatter.format(date);
+  } catch {
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const d = String(date.getDate()).padStart(2, '0');
+    const hh = String(date.getHours()).padStart(2, '0');
+    const mm = String(date.getMinutes()).padStart(2, '0');
+    return `${y}/${m}/${d} ${hh}:${mm}`;
+  }
+};
+
 function ProcessStartCard({
   payload,
   isCollapsed,
@@ -39,6 +91,29 @@ function ProcessStartCard({
   restoreDisabled,
   restoreDisabledReason,
 }: ProcessStartCardProps) {
+  const [tick, setTick] = useState(0);
+  const locale = useMemo(getLocale, []);
+  useEffect(() => {
+    const id = setInterval(() => setTick((t) => t + 1), 60_000);
+    return () => clearInterval(id);
+  }, []);
+
+  const startedAtDate = useMemo(() => {
+    if (!payload.startedAt) return null;
+    const d = new Date(payload.startedAt);
+    return Number.isNaN(d.getTime()) ? null : d;
+  }, [payload.startedAt]);
+
+  const relativeTimeLabel = useMemo(() => {
+    if (!startedAtDate) return null;
+    return formatRelativeTime(startedAtDate, locale);
+  }, [startedAtDate, locale, tick]);
+
+  const absoluteTimeLabel = useMemo(() => {
+    if (!startedAtDate) return null;
+    return formatAbsoluteTime(startedAtDate, locale);
+  }, [startedAtDate, locale]);
+
   const computeAgentLabel = (p: ProcessStartPayload): string | null => {
     if (!p.action) return null;
     const t: any = p.action.typ || {};
@@ -46,16 +121,11 @@ function ProcessStartCard({
     if (!exec) return null;
     let setting: string | null = null;
     if (exec === 'CODEX') {
-      const m = (t.codex_model_override || '') as string;
-      setting = m
-        ? m === 'gpt-5'
-          ? 'high'
-          : m === 'codex-mini-latest'
-            ? 'medium'
-            : m === 'o4-mini'
-              ? 'low'
-              : m
-        : 'default';
+      const reasoning = formatCodexReasoning({
+        modelOverride: t.codex_model_override,
+        reasoningEffort: t.codex_model_reasoning_effort,
+      });
+      setting = reasoning ?? 'default';
     } else if (exec === 'CLAUDE_CODE') {
       const m = (t.claude_model_override || '') as string;
       setting = m ? m : 'default';
@@ -170,11 +240,19 @@ function ProcessStartCard({
         </div>
 
         {/* Main label + optional agent */}
-        <div className="flex items-center gap-2 text-foreground min-w-0 flex-1">
-          {payload.runReason === PROCESS_RUN_REASONS.CODING_AGENT && (
-            <span className="text-xs text-muted-foreground flex-shrink-0">
-              Agent · {computeAgentLabel(payload) || '—'}
-            </span>
+        <div className="flex items-center gap-2 text-foreground min-w-0 flex-1 flex-wrap">
+          {(payload.runReason === PROCESS_RUN_REASONS.CODING_AGENT || relativeTimeLabel) && (
+            <div className="flex items-center gap-1 text-xs text-muted-foreground flex-shrink-0">
+              {payload.runReason === PROCESS_RUN_REASONS.CODING_AGENT && (
+                <>
+                  <span>Agent · {computeAgentLabel(payload) || '—'}</span>
+                  {relativeTimeLabel ? <span aria-hidden="true">·</span> : null}
+                </>
+              )}
+              {relativeTimeLabel && (
+                <span title={absoluteTimeLabel || undefined}>{relativeTimeLabel}</span>
+              )}
+            </div>
           )}
           <span
             className={cn(
