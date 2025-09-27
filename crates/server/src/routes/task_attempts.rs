@@ -26,6 +26,7 @@ use executors::{
         coding_agent_follow_up::CodingAgentFollowUpRequest,
         script::{ScriptContext, ScriptRequest, ScriptRequestLanguage},
     },
+    executors::codex::ReasoningEffort,
     profile::ExecutorProfileId,
 };
 use futures_util::TryStreamExt;
@@ -193,6 +194,8 @@ pub struct CreateTaskAttemptBody {
     pub initial_instructions: Option<String>,
     /// Optional model override for Codex on initial run
     pub codex_model_override: Option<String>,
+    /// Optional reasoning effort override for Codex on initial run
+    pub codex_model_reasoning_effort: Option<ReasoningEffort>,
     /// Optional model override for Claude on initial run
     pub claude_model_override: Option<String>,
 }
@@ -302,6 +305,7 @@ pub async fn create_task_attempt(
             executor_profile_id.clone(),
             payload.initial_instructions.clone(),
             payload.codex_model_override.clone(),
+            payload.codex_model_reasoning_effort.clone(),
             payload.claude_model_override.clone(),
         )
         .await?;
@@ -333,6 +337,8 @@ pub struct CreateFollowUpAttempt {
     pub executor_profile_id: Option<ExecutorProfileId>,
     /// Optional Codex model override (e.g., "gpt-5", "codex-mini-latest")
     pub codex_model_override: Option<String>,
+    /// Optional Codex reasoning effort override (maps to --config model_reasoning_effort)
+    pub codex_model_reasoning_effort: Option<ReasoningEffort>,
     /// Optional Claude model override ("sonnet" | "opus")
     pub claude_model_override: Option<String>,
 }
@@ -532,6 +538,7 @@ pub async fn follow_up(
         session_id,
         executor_profile_id,
         codex_model_override: payload.codex_model_override,
+        codex_model_reasoning_effort: payload.codex_model_reasoning_effort,
         claude_model_override: payload.claude_model_override,
         force_new_session: Some(force_new_session),
     };

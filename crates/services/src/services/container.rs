@@ -29,7 +29,7 @@ use executors::{
         coding_agent_initial::CodingAgentInitialRequest,
         script::{ScriptContext, ScriptRequest, ScriptRequestLanguage},
     },
-    executors::{ExecutorError, StandardCodingAgentExecutor},
+    executors::{ExecutorError, StandardCodingAgentExecutor, codex::ReasoningEffort},
     logs::utils::patch::ConversationPatch,
     profile::{ExecutorConfigs, ExecutorProfileId},
 };
@@ -494,6 +494,7 @@ pub trait ContainerService {
         executor_profile_id: ExecutorProfileId,
         initial_instructions: Option<String>,
         codex_model_override: Option<String>,
+        codex_model_reasoning_effort: Option<ReasoningEffort>,
         claude_model_override: Option<String>,
     ) -> Result<ExecutionProcess, ContainerError> {
         // Create container
@@ -586,6 +587,7 @@ pub trait ContainerService {
                         prompt,
                         executor_profile_id: executor_profile_id.clone(),
                         codex_model_override: codex_model_override.clone(),
+                        codex_model_reasoning_effort: codex_model_reasoning_effort.clone(),
                         claude_model_override: claude_model_override.clone(),
                     }),
                     cleanup_action,
@@ -604,6 +606,7 @@ pub trait ContainerService {
                     prompt,
                     executor_profile_id: executor_profile_id.clone(),
                     codex_model_override,
+                    codex_model_reasoning_effort,
                     claude_model_override,
                 }),
                 cleanup_action,
