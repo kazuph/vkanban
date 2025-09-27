@@ -31,7 +31,17 @@ export function formatExecutorName(executor?: string | null): string {
   }
 }
 
-export function formatCodexReasoning(modelOverride?: string | null): string | null {
+export function formatCodexReasoning({
+  modelOverride,
+  reasoningEffort,
+}: {
+  modelOverride?: string | null;
+  reasoningEffort?: string | null;
+}): string | null {
+  if (reasoningEffort) {
+    return reasoningEffort;
+  }
+
   if (!modelOverride) {
     return null;
   }
@@ -52,11 +62,13 @@ export function formatAgentSummary({
   executor,
   variant,
   codexModelOverride,
+  codexModelReasoningEffort,
   claudeModelOverride,
 }: {
   executor?: string | null;
   variant?: string | null;
   codexModelOverride?: string | null;
+  codexModelReasoningEffort?: string | null;
   claudeModelOverride?: string | null;
 }): string | null {
   if (!executor) {
@@ -72,7 +84,10 @@ export function formatAgentSummary({
 
   const extras: string[] = [];
   if (executor === 'CODEX') {
-    const reasoning = formatCodexReasoning(codexModelOverride);
+    const reasoning = formatCodexReasoning({
+      modelOverride: codexModelOverride,
+      reasoningEffort: codexModelReasoningEffort,
+    });
     if (reasoning) {
       extras.push(reasoning);
     }

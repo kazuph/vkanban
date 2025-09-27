@@ -2,7 +2,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
 import { attemptsApi } from '@/lib/api';
 import type { TaskAttempt } from 'shared/types';
-import type { ExecutorProfileId } from 'shared/types';
+import type { ExecutorProfileId, ReasoningEffort } from 'shared/types';
 
 export function useAttemptCreation(taskId: string) {
   const queryClient = useQueryClient();
@@ -16,6 +16,7 @@ export function useAttemptCreation(taskId: string) {
       reuseBranchAttemptId,
       initialInstructions,
       codexModelOverride,
+      codexModelReasoningEffort,
       claudeModelOverride,
     }: {
       profile: ExecutorProfileId;
@@ -23,6 +24,7 @@ export function useAttemptCreation(taskId: string) {
       reuseBranchAttemptId?: string | null;
       initialInstructions?: string | null;
       codexModelOverride?: string | null;
+      codexModelReasoningEffort?: ReasoningEffort | null;
       claudeModelOverride?: string | null;
     }) =>
       attemptsApi.create({
@@ -32,6 +34,7 @@ export function useAttemptCreation(taskId: string) {
         reuse_branch_of_attempt_id: reuseBranchAttemptId ?? null,
         initial_instructions: initialInstructions ?? null,
         codex_model_override: codexModelOverride ?? null,
+        codex_model_reasoning_effort: codexModelReasoningEffort ?? null,
         claude_model_override: claudeModelOverride ?? null,
       }),
     onSuccess: (newAttempt: TaskAttempt) => {
