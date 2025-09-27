@@ -93,6 +93,10 @@ executor_profile_id: ExecutorProfileId | null,
  */
 codex_model_override: string | null, 
 /**
+ * Optional Codex reasoning effort override (maps to --config model_reasoning_effort)
+ */
+codex_model_reasoning_effort: ReasoningEffort | null, 
+/**
  * Optional Claude model override ("sonnet" | "opus")
  */
 claude_model_override: string | null, };
@@ -193,6 +197,10 @@ executor_profile_id: ExecutorProfileId,
  */
 codex_model_override: string | null, 
 /**
+ * Optional override for Codex reasoning effort (maps to --config model_reasoning_effort)
+ */
+codex_model_reasoning_effort: ReasoningEffort | null, 
+/**
  * Optional override for Claude model ("sonnet" | "opus") during initial run
  */
 claude_model_override: string | null, };
@@ -206,6 +214,10 @@ executor_profile_id: ExecutorProfileId,
  * Optional override for Codex model (maps to --model)
  */
 codex_model_override: string | null, 
+/**
+ * Optional override for Codex reasoning effort (maps to --config model_reasoning_effort)
+ */
+codex_model_reasoning_effort: ReasoningEffort | null, 
 /**
  * Optional override for Claude model ("sonnet" | "opus")
  */
@@ -232,6 +244,10 @@ initial_instructions: string | null,
  * Optional model override for Codex on initial run
  */
 codex_model_override: string | null, 
+/**
+ * Optional reasoning effort override for Codex on initial run
+ */
+codex_model_reasoning_effort: ReasoningEffort | null, 
 /**
  * Optional model override for Claude on initial run
  */
